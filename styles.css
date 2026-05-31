@@ -1,0 +1,95 @@
+/* Center and stack title + navbar */
+.navbar {
+  display: block !important;
+  text-align: center;
+  padding-bottom: 0;
+}
+
+#quarto-header,
+#quarto-header.headroom,
+#quarto-header.headroom--pinned,
+#quarto-header.headroom--unpinned {
+  position: fixed !important;
+  transform: none !important;
+}
+
+.navbar .navbar-brand {
+  display: block;
+  float: none;
+  font-size: 1.05rem;
+  margin-bottom: 0.4rem;
+}
+
+.navbar-title {
+  font-size: 1.05rem;
+}
+
+.quarto-title h1.title {
+  font-size: 1.55rem;
+}
+
+main.content h2 {
+  font-size: 1.55rem;
+}
+
+.quarto-title .subtitle {
+  font-size: 0.92rem;
+}
+
+.navbar .navbar-collapse {
+  justify-content: center;
+}
+
+.navbar-nav {
+  justify-content: center;
+  flex-direction: row;
+  gap: 1rem;
+}
+
+/* Optional: remove background color if theme adds it */
+.navbar-dark.bg-primary,
+.navbar-light.bg-light {
+  background: transparent !important;
+  border-bottom: none;
+}
+
+.handbook-banner, .handbook-header {
+  background: #f2f6fa;
+  border-left: 5px solid #003366;
+  padding: 1rem 1.5rem;
+  border-radius: 6px;
+  margin: 1.5rem 0;
+}
+
+.nav-link.disabled {
+  color: #777 !important;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* For the cite section */
+.handbook-banner p {
+  margin: 0.5rem 0;
+}
+
+/* For the explore section (acts like \hfill) */
+.handbook-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.handbook-header a {
+  white-space: nowrap;
+  background: #003366;
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.handbook-header a:hover {
+  background: #004080;
+}
