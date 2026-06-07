@@ -126,6 +126,22 @@ main.content h2 {
 
 .roc-dashboard.is-mcmc .roc-dashboard-bar {
   background: linear-gradient(135deg, #f5fbff 0%, #eef7f8 55%, #f9fbff 100%);
+  grid-template-columns: minmax(0, 2fr) minmax(190px, 1fr);
+}
+
+.roc-dashboard.is-mcmc .roc-dashboard-bar > div:first-child {
+  grid-column: 1 / -1;
+}
+
+.roc-dashboard.is-mcmc .roc-metric-picker {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.roc-dashboard.is-mcmc .roc-metric-picker select {
+  max-width: none;
+  width: 100%;
 }
 
 .roc-kicker {
@@ -161,7 +177,9 @@ main.content h2 {
   border-radius: 6px;
   color: #203142;
   font: inherit;
+  max-width: min(100%, 24rem);
   padding: 0.35rem 1.8rem 0.35rem 0.55rem;
+  width: 10rem;
 }
 
 .roc-metric-readout {
@@ -217,6 +235,18 @@ main.content h2 {
   border-color: #d8e5ef;
 }
 
+.roc-dashboard.is-mcmc .roc-dashboard-body {
+  grid-template-columns: 1fr;
+}
+
+.roc-dashboard.is-mcmc #roc-right-panel {
+  display: none;
+}
+
+.roc-dashboard.is-mcmc .roc-panel-title {
+  display: none;
+}
+
 .roc-panel-title {
   color: #2d4053;
   font-size: 0.88rem;
@@ -230,6 +260,10 @@ main.content h2 {
   overflow: hidden;
   touch-action: none;
   width: 100%;
+}
+
+.roc-dashboard.is-mcmc .roc-svg {
+  aspect-ratio: 1.36 / 1;
 }
 
 .roc-concept-note {
@@ -268,6 +302,28 @@ main.content h2 {
   font-weight: 700;
 }
 
+.roc-mcmc-axis line,
+.roc-mcmc-axis path {
+  stroke: #9b9b9b;
+  stroke-width: 0.8;
+}
+
+.roc-mcmc-axis .roc-grid-line {
+  stroke: #e8e8e8;
+  stroke-width: 0.8;
+}
+
+.roc-mcmc-axis text {
+  fill: #111;
+  font-size: 10px;
+}
+
+.roc-mcmc-axis .roc-axis-label {
+  fill: #111;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .roc-grid-line {
   stroke: #e5ebf1;
   stroke-width: 1;
@@ -285,5 +341,45 @@ main.content h2 {
   .roc-dashboard-bar,
   .roc-dashboard-body {
     grid-template-columns: 1fr;
+  }
+
+  .roc-dashboard.is-mcmc .roc-dashboard-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .roc-dashboard.is-mcmc .roc-dashboard-bar > div:first-child {
+    grid-column: auto;
+  }
+
+  .roc-dashboard h3 {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 520px) {
+  .handbook-banner,
+  .handbook-header {
+    padding: 0.9rem 1rem;
+  }
+
+  .handbook-banner .justify {
+    text-align: left !important;
+  }
+
+  .roc-dashboard-bar,
+  .roc-dashboard-body {
+    padding: 0.75rem;
+  }
+
+  .roc-plot-panel {
+    padding: 0.45rem;
+  }
+
+  .roc-metric-readout strong {
+    font-size: 1.35rem;
+  }
+
+  .roc-dashboard-credit {
+    text-align: left;
   }
 }

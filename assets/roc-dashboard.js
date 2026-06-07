@@ -69,35 +69,27 @@
     m: { top: 18, right: 20, bottom: 60, left: 66 }
   };
 
-  const mcmcTraceView = {
-    w: 640,
-    h: 340,
-    m: { top: 22, right: 18, bottom: 58, left: 64 },
-    xMin: 1,
-    xMax: 180,
-    yMin: -2.65,
-    yMax: 2.55,
-    xTicks: [1, 45, 90, 135, 180],
-    yTicks: [-2, -1, 0, 1, 2]
+  const fig31View = {
+    w: 880,
+    h: 648,
+    m: { top: 22, right: 26, bottom: 34, left: 62 },
+    traceWidth: 650,
+    densityGap: 12,
+    densityWidth: 92,
+    rowHeight: 148,
+    rowGap: 34,
+    xMin: 0,
+    xMax: 20000,
+    xTicks: [0, 5000, 10000, 15000, 20000]
   };
 
-  const mcmcDensityView = {
-    w: 560,
-    h: 340,
-    m: { top: 22, right: 22, bottom: 60, left: 66 },
-    xMin: -2.7,
-    xMax: 3,
-    yMin: 0,
-    yMax: 0.95,
-    xTicks: [-2, -1, 0, 1, 2, 3],
-    yTicks: [0, 0.45, 0.9]
-  };
-
-  const mcmc = createMcmcData();
-  const mcmcCycleMs = 11600;
-  const mcmcHoldMs = 1200;
+  const mcmc = createFig31Data(window.ROCSTUDIO_FIG31_CHAINS);
+  const mcmcCycleMs = 18000;
+  const mcmcHoldMs = 1500;
   let animationFrame = null;
   let animationStart = null;
+  let lastMovieDraw = 0;
+  let lastMovieCount = 0;
   let drag = null;
 
   function clone(value) {
@@ -130,48 +122,34 @@
     return Math.exp(-0.5 * z * z) / (sd * Math.sqrt(2 * Math.PI));
   }
 
-  function seededRng(seed) {
-    let value = seed >>> 0;
-    return function nextRandom() {
-      value = (1664525 * value + 1013904223) >>> 0;
-      return value / 4294967296;
-    };
-  }
-
-  function randomNormal(rng) {
-    const u1 = Math.max(rng(), 1e-10);
-    const u2 = rng();
-    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-  }
-
-  function createMcmcData() {
-    const rng = seededRng(31031);
-    const total = 180;
-    const burn = 24;
-    const targetMean = 1.05;
-    const targetSd = 0.48;
-    const rho = 0.9;
-    const innovationSd = targetSd * Math.sqrt(1 - rho * rho);
-    const chain = new Array(total);
-    chain[0] = -2.35;
-
-    for (let i = 1; i < total; i += 1) {
-      const pull = targetMean + rho * (chain[i - 1] - targetMean);
-      const drift = i < burn ? 0.035 * (burn - i) / burn : 0;
-      chain[i] = pull + innovationSd * randomNormal(rng) + drift;
+  function createFig31Data(raw) {
+    if (!raw || !Array.isArray(raw.params)) {
+      return {
+        total: 0,
+        burn: 0,
+        params: []
+      };
     }
 
-    const grid = Array.from({ length: 180 }, (_, i) => {
-      return mcmcDensityView.xMin + (i / 179) * (mcmcDensityView.xMax - mcmcDensityView.xMin);
-    });
-
     return {
-      chain,
-      total,
-      burn,
-      grid,
-      targetMean,
-      targetSd
+      total: Number(raw.total),
+      burn: Number(raw.burn),
+      frameStep: Number(raw.frameStep || 250),
+      params: raw.params.map((param) => ({
+        label: param.label,
+        mathLabel: param.mathLabel || param.label,
+        values: param.values.map(Number),
+        yMin: Number(param.yMin),
+        yMax: Number(param.yMax),
+        yTicks: param.yTicks.map(Number).filter((tick) => tick >= param.yMin && tick <= param.yMax),
+        densityGrid: param.densityGrid.map(Number),
+        histBreaks: param.histBreaks.map(Number),
+        frames: param.frames.map((frame) => ({
+          count: Number(frame.count),
+          density: frame.density.map(Number),
+          hist: frame.hist.map(Number)
+        }))
+      }))
     };
   }
 
@@ -680,38 +658,13 @@
     svg.appendChild(axis);
   }
 
-  function mcmcScales(view) {
-    const { w, h, m, xMin, xMax, yMin, yMax } = view;
-    return {
-      x: (value) => m.left + ((value - xMin) / (xMax - xMin)) * (w - m.left - m.right),
-      y: (value) => h - m.bottom - ((value - yMin) / (yMax - yMin)) * (h - m.top - m.bottom)
-    };
-  }
-
-  function addMcmcDefs(svg, prefix) {
-    const defs = svgEl("defs");
-    const glow = svgEl("filter", { id: `${prefix}-glow`, x: "-30%", y: "-30%", width: "160%", height: "160%" });
-    glow.appendChild(svgEl("feGaussianBlur", { stdDeviation: 2.4, result: "blur" }));
-    const merge = svgEl("feMerge");
-    merge.appendChild(svgEl("feMergeNode", { in: "blur" }));
-    merge.appendChild(svgEl("feMergeNode", { in: "SourceGraphic" }));
-    glow.appendChild(merge);
-    defs.appendChild(glow);
-
-    const densityGradient = svgEl("linearGradient", { id: `${prefix}-density`, x1: "0", x2: "0", y1: "0", y2: "1" });
-    densityGradient.appendChild(svgEl("stop", { offset: "0%", "stop-color": colors.teal, "stop-opacity": 0.45 }));
-    densityGradient.appendChild(svgEl("stop", { offset: "100%", "stop-color": colors.teal, "stop-opacity": 0.05 }));
-    defs.appendChild(densityGradient);
-
-    svg.appendChild(defs);
-  }
-
   function mcmcFrame(timestamp) {
+    if (!mcmc.total) return { count: 0, progress: 0, retained: 0 };
     if (animationStart === null) animationStart = timestamp;
     const activeMs = mcmcCycleMs - mcmcHoldMs;
     const elapsed = (timestamp - animationStart) % mcmcCycleMs;
     const progress = clamp(elapsed / activeMs, 0, 1);
-    const count = clamp(Math.floor(2 + progress * (mcmc.total - 2)), 2, mcmc.total);
+    const count = clamp(Math.floor(1 + progress * (mcmc.total - 1)), 1, mcmc.total);
     return {
       count,
       progress,
@@ -719,202 +672,243 @@
     };
   }
 
-  function sampleMean(values) {
-    if (!values.length) return 0;
-    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  function mcmcRowLayout(index) {
+    const y0 = fig31View.m.top + index * (fig31View.rowHeight + fig31View.rowGap);
+    const x0 = fig31View.m.left;
+    const traceX1 = x0 + fig31View.traceWidth;
+    const densityX0 = traceX1 + fig31View.densityGap;
+    return {
+      x0,
+      x1: traceX1,
+      densityX0,
+      densityX1: densityX0 + fig31View.densityWidth,
+      y0,
+      y1: y0 + fig31View.rowHeight
+    };
   }
 
-  function sampleSd(values) {
-    if (values.length < 2) return 0.25;
-    const mean = sampleMean(values);
-    const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1);
-    return Math.sqrt(Math.max(variance, 1e-6));
+  function mcmcXScale(row) {
+    return (value) => row.x0 + ((value - fig31View.xMin) / (fig31View.xMax - fig31View.xMin)) * (row.x1 - row.x0);
   }
 
-  function kdeValues(samples, grid) {
-    if (samples.length < 2) return grid.map((x) => ({ x, y: 0 }));
-    const sd = sampleSd(samples);
-    const bw = clamp(1.06 * sd * samples.length ** -0.2, 0.12, 0.34);
-    return grid.map((x) => {
-      const y = samples.reduce((sum, value) => sum + normalPdf(x, value, bw), 0) / samples.length;
-      return { x, y };
+  function mcmcYScale(row, param) {
+    return (value) => row.y1 - ((value - param.yMin) / (param.yMax - param.yMin)) * (row.y1 - row.y0);
+  }
+
+  function mcmcDensityScale(row, param) {
+    const maxDensity = mcmcDensityMax(param);
+    return (value) => row.densityX0 + (value / maxDensity) * (row.densityX1 - row.densityX0);
+  }
+
+  function mcmcDensityMax(param) {
+    if (!param._densityMax) {
+      const finalFrame = param.frames[param.frames.length - 1];
+      param._densityMax = Math.max(1e-6, ...finalFrame.density, ...finalFrame.hist) * 1.05;
+    }
+    return param._densityMax;
+  }
+
+  function mcmcDensityFrame(param, count) {
+    let frame = param.frames[0];
+    for (let i = 1; i < param.frames.length; i += 1) {
+      if (param.frames[i].count > count) break;
+      frame = param.frames[i];
+    }
+    return frame;
+  }
+
+  function mcmcTracePath(values, startIteration, endIteration, xScale, yScale) {
+    if (endIteration - startIteration < 1) return "";
+    const path = [];
+    for (let iteration = startIteration; iteration <= endIteration; iteration += 1) {
+      const x = xScale(iteration);
+      const y = yScale(values[iteration - 1]);
+      path.push(`${iteration === startIteration ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`);
+    }
+    return path.join(" ");
+  }
+
+  function mcmcDensityAreaPath(param, frame, xScale, yScale) {
+    const grid = param.densityGrid;
+    if (!frame.density.some((value) => value > 0)) return "";
+    const path = [`M ${xScale(0).toFixed(2)} ${yScale(grid[0]).toFixed(2)}`];
+    frame.density.forEach((density, index) => {
+      path.push(`L ${xScale(density).toFixed(2)} ${yScale(grid[index]).toFixed(2)}`);
     });
+    path.push(`L ${xScale(0).toFixed(2)} ${yScale(grid[grid.length - 1]).toFixed(2)}`, "Z");
+    return path.join(" ");
   }
 
-  function drawMcmcTrace(frame) {
-    const view = mcmcTraceView;
-    const { w, h, m } = view;
-    clear(densitySvg, view);
-    addMcmcDefs(densitySvg, "mcmc-trace");
-    const scale = mcmcScales(view);
-    drawCartesianAxes(densitySvg, view, scale.x, scale.y, view.xTicks, view.yTicks, "Iteration", "Parameter value");
+  function mcmcDensityLinePath(param, frame, xScale, yScale) {
+    const grid = param.densityGrid;
+    if (!frame.density.some((value) => value > 0)) return "";
+    return frame.density.map((density, index) => {
+      return `${index ? "L" : "M"} ${xScale(density).toFixed(2)} ${yScale(grid[index]).toFixed(2)}`;
+    }).join(" ");
+  }
+
+  function drawMcmcAxes(svg, row, param, rowIndex) {
+    const xScale = mcmcXScale(row);
+    const yScale = mcmcYScale(row, param);
+    const axis = svgEl("g", { class: "roc-axis roc-mcmc-axis" });
+
+    axis.appendChild(svgEl("line", { x1: row.x0, y1: row.y1, x2: row.x1, y2: row.y1 }));
+    axis.appendChild(svgEl("line", { x1: row.x0, y1: row.y0, x2: row.x0, y2: row.y1 }));
+    axis.appendChild(svgEl("line", { x1: row.densityX0, y1: row.y0, x2: row.densityX0, y2: row.y1 }));
+
+    fig31View.xTicks.forEach((tick) => {
+      const x = xScale(tick);
+      axis.appendChild(svgEl("line", { class: "roc-grid-line", x1: x, y1: row.y0, x2: x, y2: row.y1 }));
+      axis.appendChild(svgEl("line", { x1: x, y1: row.y1, x2: x, y2: row.y1 + 4 }));
+      axis.appendChild(svgEl("text", { class: "roc-axis-tick", x, y: row.y1 + 17, "text-anchor": "middle", text: String(tick) }));
+    });
+
+    param.yTicks.forEach((tick) => {
+      const y = yScale(tick);
+      axis.appendChild(svgEl("line", { class: "roc-grid-line", x1: row.x0, y1: y, x2: row.densityX1, y2: y }));
+      axis.appendChild(svgEl("line", { x1: row.x0 - 4, y1: y, x2: row.x0, y2: y }));
+      axis.appendChild(svgEl("text", { class: "roc-axis-tick", x: row.x0 - 8, y: y + 3.5, "text-anchor": "end", text: formatAxisTick(tick) }));
+    });
+
+    axis.appendChild(svgEl("text", { class: "roc-axis-label", x: (row.x0 + row.x1) / 2, y: row.y1 + 31, "text-anchor": "middle", text: "Iteration" }));
+    axis.appendChild(svgEl("text", {
+      class: "roc-axis-label",
+      x: row.x0 - 42,
+      y: (row.y0 + row.y1) / 2,
+      transform: `rotate(-90 ${row.x0 - 42} ${(row.y0 + row.y1) / 2})`,
+      "text-anchor": "middle",
+      text: rowIndex === 2 ? "π" : param.label
+    }));
+
+    svg.appendChild(axis);
+  }
+
+  function drawMcmcTraceRow(svg, row, param, frame) {
+    const xScale = mcmcXScale(row);
+    const yScale = mcmcYScale(row, param);
+    const burnEnd = Math.min(frame.count, mcmc.burn);
+    const keptStart = Math.max(mcmc.burn + 1, 1);
+    const keptEnd = Math.min(frame.count, mcmc.total);
+
+    if (burnEnd > 1) {
+      svg.appendChild(svgEl("path", {
+        d: mcmcTracePath(param.values, 1, burnEnd, xScale, yScale),
+        fill: "none",
+        stroke: "#ff0000",
+        "stroke-width": 1.05,
+        "stroke-linejoin": "round",
+        "stroke-linecap": "round",
+        opacity: 0.82
+      }));
+    }
+
+    if (keptEnd > keptStart) {
+      svg.appendChild(svgEl("path", {
+        d: mcmcTracePath(param.values, keptStart, keptEnd, xScale, yScale),
+        fill: "none",
+        stroke: "steelblue",
+        "stroke-width": 1.05,
+        "stroke-linejoin": "round",
+        "stroke-linecap": "round",
+        opacity: 0.82
+      }));
+    }
+  }
+
+  function drawMcmcDensityRow(svg, row, param, frame) {
+    const yScale = mcmcYScale(row, param);
+    const xScale = mcmcDensityScale(row, param);
+    const histBreaks = param.histBreaks;
+
+    frame.hist.forEach((density, index) => {
+      const yMin = histBreaks[index];
+      const yMax = histBreaks[index + 1];
+      if (!Number.isFinite(yMin) || !Number.isFinite(yMax) || density <= 0) return;
+      const y = yScale(yMax);
+      const height = Math.max(0.8, yScale(yMin) - yScale(yMax));
+      svg.appendChild(svgEl("rect", {
+        x: row.densityX0,
+        y,
+        width: xScale(density) - row.densityX0,
+        height,
+        fill: "steelblue",
+        stroke: "steelblue",
+        "stroke-width": 0.35,
+        opacity: 0.30
+      }));
+    });
+
+    const area = mcmcDensityAreaPath(param, frame, xScale, yScale);
+    if (area) {
+      svg.appendChild(svgEl("path", {
+        d: area,
+        fill: "steelblue",
+        stroke: "none",
+        opacity: 0.10
+      }));
+    }
+
+    const line = mcmcDensityLinePath(param, frame, xScale, yScale);
+    if (line) {
+      svg.appendChild(svgEl("path", {
+        d: line,
+        fill: "none",
+        stroke: "steelblue",
+        "stroke-width": 1.35,
+        "stroke-linejoin": "round",
+        "stroke-linecap": "round",
+        opacity: 0.90
+      }));
+    }
+  }
+
+  function drawMcmcFigure(frame) {
+    clear(densitySvg, fig31View);
+    densitySvg.setAttribute("aria-label", "Figure 3.1 companion showing sensitivity, specificity, and prevalence MCMC traces and posterior densigrams");
 
     densitySvg.appendChild(svgEl("rect", {
-      x: scale.x(1),
-      y: m.top,
-      width: scale.x(mcmc.burn) - scale.x(1),
-      height: h - m.top - m.bottom,
-      fill: "rgba(225, 74, 97, 0.055)"
-    }));
-    densitySvg.appendChild(svgEl("rect", {
-      x: scale.x(mcmc.burn),
-      y: m.top,
-      width: scale.x(mcmc.total) - scale.x(mcmc.burn),
-      height: h - m.top - m.bottom,
-      fill: "rgba(37, 99, 235, 0.045)"
+      x: 0,
+      y: 0,
+      width: fig31View.w,
+      height: fig31View.h,
+      fill: "#fff"
     }));
 
-    const visible = mcmc.chain.slice(0, frame.count).map((value, index) => ({ x: index + 1, y: value }));
-    const burnPath = visible.filter((point) => point.x <= mcmc.burn);
-    const keptPath = visible.filter((point) => point.x >= mcmc.burn);
-    if (burnPath.length > 1) {
-      densitySvg.appendChild(svgEl("path", {
-        d: linePath(burnPath, scale.x, scale.y),
-        fill: "none",
-        stroke: colors.coral,
-        "stroke-width": 3.2,
-        "stroke-linejoin": "round",
-        "stroke-linecap": "round",
-        filter: "url(#mcmc-trace-glow)"
+    if (!mcmc.total || !mcmc.params.length) {
+      densitySvg.appendChild(svgEl("text", {
+        x: fig31View.w / 2,
+        y: fig31View.h / 2,
+        "text-anchor": "middle",
+        text: "Fig. 3.1 chain data could not be loaded."
       }));
-    }
-    if (keptPath.length > 1) {
-      densitySvg.appendChild(svgEl("path", {
-        d: linePath(keptPath, scale.x, scale.y),
-        fill: "none",
-        stroke: colors.blue,
-        "stroke-width": 3.4,
-        "stroke-linejoin": "round",
-        "stroke-linecap": "round",
-        filter: "url(#mcmc-trace-glow)"
-      }));
+      return;
     }
 
-    const recent = visible.slice(-18);
-    recent.forEach((point, index) => {
-      const alpha = 0.18 + (index + 1) / recent.length * 0.48;
-      densitySvg.appendChild(svgEl("circle", {
-        cx: scale.x(point.x),
-        cy: scale.y(point.y),
-        r: 2.4 + index / recent.length * 2.1,
-        fill: point.x <= mcmc.burn ? colors.coral : colors.blue,
-        opacity: alpha
-      }));
+    mcmc.params.forEach((param, index) => {
+      const row = mcmcRowLayout(index);
+      const densityFrame = mcmcDensityFrame(param, frame.count);
+      drawMcmcAxes(densitySvg, row, param, index);
+      drawMcmcTraceRow(densitySvg, row, param, frame);
+      drawMcmcDensityRow(densitySvg, row, param, densityFrame);
     });
-
-    const current = visible[visible.length - 1];
-    densitySvg.appendChild(svgEl("line", {
-      x1: scale.x(current.x),
-      x2: scale.x(current.x),
-      y1: m.top,
-      y2: h - m.bottom,
-      stroke: colors.gold,
-      "stroke-width": 1.6,
-      "stroke-dasharray": "4 5",
-      opacity: 0.75
-    }));
-    densitySvg.appendChild(svgEl("circle", {
-      cx: scale.x(current.x),
-      cy: scale.y(current.y),
-      r: 7.4,
-      fill: current.x <= mcmc.burn ? colors.coral : colors.blue,
-      stroke: "#fff",
-      "stroke-width": 2.2,
-      filter: "url(#mcmc-trace-glow)"
-    }));
-  }
-
-  function drawMcmcDensity(frame) {
-    const view = mcmcDensityView;
-    const { h, m } = view;
-    clear(rocSvg, view);
-    addMcmcDefs(rocSvg, "mcmc-density");
-    const scale = mcmcScales(view);
-    drawCartesianAxes(rocSvg, view, scale.x, scale.y, view.xTicks, view.yTicks, "Parameter value", "Posterior density");
-
-    const target = mcmc.grid.map((x) => ({ x, y: normalPdf(x, mcmc.targetMean, mcmc.targetSd) }));
-    rocSvg.appendChild(svgEl("path", {
-      d: linePath(target, scale.x, scale.y),
-      fill: "none",
-      stroke: "#8ca4bb",
-      "stroke-dasharray": "5 5",
-      "stroke-width": 2.1,
-      opacity: 0.82
-    }));
-
-    const retained = mcmc.chain.slice(mcmc.burn, frame.count);
-    const density = kdeValues(retained, mcmc.grid);
-    if (retained.length > 1) {
-      rocSvg.appendChild(svgEl("path", {
-        d: areaPath(density, scale.x, scale.y, 0),
-        fill: "url(#mcmc-density-density)",
-        stroke: "none"
-      }));
-      rocSvg.appendChild(svgEl("path", {
-        d: linePath(density, scale.x, scale.y),
-        fill: "none",
-        stroke: colors.teal,
-        "stroke-width": 3.5,
-        "stroke-linejoin": "round",
-        "stroke-linecap": "round",
-        filter: "url(#mcmc-density-glow)"
-      }));
-    }
-
-    retained.slice(-42).forEach((value, index, values) => {
-      rocSvg.appendChild(svgEl("line", {
-        x1: scale.x(value),
-        x2: scale.x(value),
-        y1: h - m.bottom,
-        y2: h - m.bottom - 9 - 9 * (index / Math.max(1, values.length - 1)),
-        stroke: colors.blue,
-        "stroke-width": 1.2,
-        opacity: 0.22 + 0.42 * (index / Math.max(1, values.length - 1))
-      }));
-    });
-
-    const current = mcmc.chain[frame.count - 1];
-    const currentDensity = retained.length > 1
-      ? kdeValues(retained, [current])[0].y
-      : normalPdf(current, mcmc.targetMean, mcmc.targetSd);
-    rocSvg.appendChild(svgEl("line", {
-      x1: scale.x(current),
-      x2: scale.x(current),
-      y1: h - m.bottom,
-      y2: scale.y(clamp(currentDensity, 0, view.yMax)),
-      stroke: colors.gold,
-      "stroke-width": 1.7,
-      "stroke-dasharray": "4 5",
-      opacity: 0.75
-    }));
-    rocSvg.appendChild(svgEl("circle", {
-      cx: scale.x(current),
-      cy: scale.y(clamp(currentDensity, 0, view.yMax)),
-      r: 5.8,
-      fill: colors.gold,
-      stroke: "#fff",
-      "stroke-width": 2,
-      filter: "url(#mcmc-density-glow)"
-    }));
   }
 
   function updateMcmcMetric(frame) {
     if (figureKicker) figureKicker.textContent = "Fig. 3.1 companion";
-    if (dashboardTitle) dashboardTitle.textContent = "MCMC chain and posterior density";
-    if (leftPanelTitle) leftPanelTitle.textContent = "Markov chain";
-    if (rightPanelTitle) rightPanelTitle.textContent = "Posterior density";
+    if (dashboardTitle) dashboardTitle.textContent = "Inference for sensitivity, specificity, and prevalence";
+    if (leftPanelTitle) leftPanelTitle.textContent = "Trace plots and posterior densigrams";
+    if (rightPanelTitle) rightPanelTitle.textContent = "Posterior densigrams";
     metricLabel.textContent = "iteration";
-    metricValue.textContent = String(frame.count);
-    secondaryMetric.textContent = `retained draws ${frame.retained}`;
-    metricCaption.textContent = "MCMC posterior approximation";
-    conceptNote.textContent = "Chapter 3 introduces MCMC as a way to approximate posterior distributions when direct sampling is unavailable.";
+    metricValue.textContent = frame.count.toLocaleString();
+    secondaryMetric.textContent = `retained draws ${frame.retained.toLocaleString()}`;
+    metricCaption.textContent = "EST/CAD no-GS Gibbs sampler";
+    conceptNote.textContent = "Figure 3.1 traces the Gibbs sampler for sensitivity, specificity, and prevalence; burn-in is red, retained iterations are steelblue, and the posterior densigrams update on the right.";
     root.classList.add("is-mcmc");
   }
 
-  function drawMcmcMovie(timestamp) {
-    const frame = mcmcFrame(timestamp);
-    drawMcmcTrace(frame);
-    drawMcmcDensity(frame);
+  function drawMcmcMovie(timestamp, suppliedFrame) {
+    const frame = suppliedFrame || mcmcFrame(timestamp);
+    drawMcmcFigure(frame);
     updateMcmcMetric(frame);
   }
 
@@ -968,9 +962,16 @@
   function startMcmcAnimation() {
     stopMcmcAnimation();
     animationStart = null;
+    lastMovieDraw = 0;
+    lastMovieCount = 0;
     const animate = (timestamp) => {
       if (state.concept !== "mcmc") return;
-      drawMcmcMovie(timestamp);
+      const frame = mcmcFrame(timestamp);
+      if (timestamp - lastMovieDraw >= 70 || frame.count < lastMovieCount || frame.count === mcmc.total) {
+        drawMcmcMovie(timestamp, frame);
+        lastMovieDraw = timestamp;
+        lastMovieCount = frame.count;
+      }
       animationFrame = window.requestAnimationFrame(animate);
     };
     animationFrame = window.requestAnimationFrame(animate);

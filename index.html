@@ -269,7 +269,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <label class="roc-metric-picker" for="roc-metric-choice">
       <span>Concept</span>
       <select id="roc-metric-choice">
-        <option value="mcmc">MCMC</option>
+        <option value="mcmc">Inference for sensitivity, specificity, and prevalence</option>
         <option value="auc">AUC</option>
         <option value="affinity">affinity</option>
       </select>
@@ -282,11 +282,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     </div>
   </div>
   <div class="roc-dashboard-body">
-    <div class="roc-plot-panel">
+    <div id="roc-left-panel" class="roc-plot-panel">
       <div id="roc-left-panel-title" class="roc-panel-title">Outcome distributions</div>
       <svg id="roc-density-plot" class="roc-svg" role="img" aria-label="Blue and red diagnostic outcome density curves"></svg>
     </div>
-    <div class="roc-plot-panel">
+    <div id="roc-right-panel" class="roc-plot-panel">
       <div id="roc-right-panel-title" class="roc-panel-title">ROC curve</div>
       <svg id="roc-roc-plot" class="roc-svg" role="img" aria-label="ROC curve implied by the selected outcome distributions"></svg>
     </div>
@@ -295,6 +295,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <p class="roc-dashboard-credit">Powered by the R package <strong>ROCstudio</strong>.</p>
 </div>
 </section>
+<script src="assets/fig31-chains.js"></script>
 <script src="assets/roc-dashboard.js"></script>
 </main></div>
 
