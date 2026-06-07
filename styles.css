@@ -105,6 +105,11 @@ main.content h2 {
   overflow: hidden;
 }
 
+.roc-dashboard.is-mcmc {
+  border-color: #c6d7e8;
+  box-shadow: 0 18px 38px rgba(0, 51, 102, 0.12);
+}
+
 .roc-dashboard * {
   box-sizing: border-box;
 }
@@ -117,6 +122,10 @@ main.content h2 {
   gap: 1rem;
   grid-template-columns: minmax(170px, 1fr) minmax(130px, auto) minmax(210px, auto);
   padding: 1rem 1.25rem;
+}
+
+.roc-dashboard.is-mcmc .roc-dashboard-bar {
+  background: linear-gradient(135deg, #f5fbff 0%, #eef7f8 55%, #f9fbff 100%);
 }
 
 .roc-kicker {
@@ -201,6 +210,11 @@ main.content h2 {
   border-radius: 8px;
   min-width: 0;
   padding: 0.75rem;
+}
+
+.roc-dashboard.is-mcmc .roc-plot-panel {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbfd 100%);
+  border-color: #d8e5ef;
 }
 
 .roc-panel-title {

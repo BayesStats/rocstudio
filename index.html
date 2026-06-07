@@ -264,16 +264,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="roc-dashboard-bar">
     <div>
       <p id="roc-figure-kicker" class="roc-kicker">Fig. 1.3 companion</p>
-      <h3>Diagnostic outcome curves</h3>
+      <h3 id="roc-dashboard-title">Diagnostic outcome curves</h3>
     </div>
     <label class="roc-metric-picker" for="roc-metric-choice">
       <span>Concept</span>
       <select id="roc-metric-choice">
+        <option value="mcmc">MCMC</option>
         <option value="auc">AUC</option>
         <option value="affinity">affinity</option>
       </select>
     </label>
-    <div class="roc-metric-readout" aria-live="polite">
+    <div class="roc-metric-readout">
       <span id="roc-metric-label">AUC</span>
       <strong id="roc-metric-value">0.000</strong>
       <span id="roc-secondary-metric" class="roc-secondary-metric"></span>
@@ -282,11 +283,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </div>
   <div class="roc-dashboard-body">
     <div class="roc-plot-panel">
-      <div class="roc-panel-title">Outcome distributions</div>
+      <div id="roc-left-panel-title" class="roc-panel-title">Outcome distributions</div>
       <svg id="roc-density-plot" class="roc-svg" role="img" aria-label="Blue and red diagnostic outcome density curves"></svg>
     </div>
     <div class="roc-plot-panel">
-      <div class="roc-panel-title">ROC curve</div>
+      <div id="roc-right-panel-title" class="roc-panel-title">ROC curve</div>
       <svg id="roc-roc-plot" class="roc-svg" role="img" aria-label="ROC curve implied by the selected outcome distributions"></svg>
     </div>
   </div>
