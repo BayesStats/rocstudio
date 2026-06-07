@@ -274,6 +274,10 @@
     return tick.toFixed(1);
   }
 
+  function formatCount(value) {
+    return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  }
+
   function setControlValues() {
     conceptChoice.value = state.concept;
   }
@@ -899,10 +903,10 @@
     if (leftPanelTitle) leftPanelTitle.textContent = "Trace plots and posterior densigrams";
     if (rightPanelTitle) rightPanelTitle.textContent = "Posterior densigrams";
     metricLabel.textContent = "iteration";
-    metricValue.textContent = frame.count.toLocaleString();
-    secondaryMetric.textContent = `retained draws ${frame.retained.toLocaleString()}`;
-    metricCaption.textContent = "EST/CAD no-GS Gibbs sampler";
-    conceptNote.textContent = "Figure 3.1 traces the Gibbs sampler for sensitivity, specificity, and prevalence; burn-in is red, retained iterations are steelblue, and the posterior densigrams update on the right.";
+    metricValue.textContent = formatCount(frame.count);
+    secondaryMetric.textContent = `retained draws ${formatCount(frame.retained)}`;
+    metricCaption.innerHTML = "Accuracy of Exercise Stress Test<br>Gibbs Sampler";
+    conceptNote.innerHTML = "Figure 3.1 traces the Gibbs sampler for sensitivity, specificity, and prevalence; burn-in is red, retained iterations are steelblue, and the posterior densigrams update on the right. <code class=\"roc-concept-command\">ROCstudio::perfn()</code>";
     root.classList.add("is-mcmc");
   }
 
