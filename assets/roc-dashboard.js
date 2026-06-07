@@ -392,13 +392,12 @@
     return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, " ")}.${decimal}`;
   }
 
-  function traceEssLine(data, count) {
-    if (!data?.params?.length || count <= data.burn) return "ESS --";
-    const parts = data.params.map((param) => {
+  function traceEssValues(data, count) {
+    if (!data?.params?.length || count <= data.burn) return "--";
+    return data.params.map((param) => {
       const frame = mcmcDensityFrame(param, count);
       return `${param.mathLabel || param.label} ${formatEssNumber(frame.ess)}`;
-    });
-    return `ESS ${parts.join(" · ")}`;
+    }).join(" · ");
   }
 
   function setControlValues() {
@@ -1035,7 +1034,7 @@
     if (rightPanelTitle) rightPanelTitle.textContent = config?.rightPanelTitle || "Posterior densigrams";
     metricLabel.textContent = config?.metricLabel || "iteration";
     metricValue.textContent = formatCount(frame.count);
-    secondaryMetric.innerHTML = `retained draws ${formatCount(frame.retained)}<br><span class="roc-ess-line">${traceEssLine(data, frame.count)}</span>`;
+    secondaryMetric.innerHTML = `retained draws ${formatCount(frame.retained)}<br><span class="roc-ess-label">ESS</span><br><span class="roc-ess-line">${traceEssValues(data, frame.count)}</span>`;
     metricCaption.innerHTML = config?.caption || "";
     conceptNote.innerHTML = config?.note || "";
     root.classList.add("is-mcmc");
