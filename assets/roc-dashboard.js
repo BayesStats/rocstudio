@@ -8,21 +8,6 @@
   const metricLabel = document.getElementById("roc-metric-label");
   const metricValue = document.getElementById("roc-metric-value");
   const metricCaption = document.getElementById("roc-metric-caption");
-  const resetButton = document.getElementById("roc-reset");
-
-  const controls = {
-    blueMean: document.getElementById("roc-blue-mean"),
-    blueSd: document.getElementById("roc-blue-sd"),
-    redMean: document.getElementById("roc-red-mean"),
-    redSd: document.getElementById("roc-red-sd")
-  };
-
-  const labels = {
-    blueMean: controls.blueMean.closest("label").querySelector("span"),
-    blueSd: controls.blueSd.closest("label").querySelector("span"),
-    redMean: controls.redMean.closest("label").querySelector("span"),
-    redSd: controls.redSd.closest("label").querySelector("span")
-  };
 
   const defaults = {
     blue: { mean: 0, sd: 1 },
@@ -34,6 +19,11 @@
     blue: { ...defaults.blue },
     red: { ...defaults.red },
     metric: defaults.metric
+  };
+
+  const dragRanges = {
+    blue: { min: -2.5, max: 2.5 },
+    red: { min: -0.5, max: 4.8 }
   };
 
   const colors = {
@@ -146,16 +136,7 @@
   }
 
   function setControlValues() {
-    controls.blueMean.value = state.blue.mean;
-    controls.blueSd.value = state.blue.sd;
-    controls.redMean.value = state.red.mean;
-    controls.redSd.value = state.red.sd;
     metricChoice.value = state.metric;
-
-    labels.blueMean.textContent = `Blue mean ${state.blue.mean.toFixed(2)}`;
-    labels.blueSd.textContent = `Blue spread ${state.blue.sd.toFixed(2)}`;
-    labels.redMean.textContent = `Red mean ${state.red.mean.toFixed(2)}`;
-    labels.redSd.textContent = `Red spread ${state.red.sd.toFixed(2)}`;
   }
 
   function drawAxes(svg, view, xScale, yScale, xTicks, yTicks, xLabel, yLabel) {
@@ -209,11 +190,9 @@
 
   function onPointerMove(event) {
     if (!drag) return;
-    const control = drag.group === "blue" ? controls.blueMean : controls.redMean;
-    const min = Number(control.min);
-    const max = Number(control.max);
+    const range = dragRanges[drag.group];
     const next = drag.startMean + dataXFromPointer(event) - drag.startX;
-    state[drag.group].mean = clamp(next, min, max);
+    state[drag.group].mean = clamp(next, range.min, range.max);
     setControlValues();
     render();
   }
@@ -361,11 +340,11 @@
     if (state.metric === "auc") {
       metricLabel.textContent = "AUC";
       metricValue.textContent = formatNumber(auc());
-      metricCaption.textContent = "Probability of correct ranking.";
+      metricCaption.textContent = "Area Under the Curve";
     } else {
-      metricLabel.textContent = "Affinity";
+      metricLabel.textContent = "affinity";
       metricValue.textContent = formatNumber(affinity());
-      metricCaption.textContent = "Distributional similarity.";
+      metricCaption.textContent = "Distributional affinity";
     }
   }
 
@@ -376,27 +355,12 @@
   }
 
   function updateFromControls() {
-    state.blue.mean = Number(controls.blueMean.value);
-    state.blue.sd = Number(controls.blueSd.value);
-    state.red.mean = Number(controls.redMean.value);
-    state.red.sd = Number(controls.redSd.value);
     state.metric = metricChoice.value;
     setControlValues();
     render();
   }
 
-  Object.values(controls).forEach((control) => {
-    control.addEventListener("input", updateFromControls);
-  });
-
   metricChoice.addEventListener("change", updateFromControls);
-  resetButton.addEventListener("click", () => {
-    state.blue = { ...defaults.blue };
-    state.red = { ...defaults.red };
-    state.metric = defaults.metric;
-    setControlValues();
-    render();
-  });
 
   window.addEventListener("pointermove", onPointerMove);
   window.addEventListener("pointerup", endDrag);
