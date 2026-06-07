@@ -10,6 +10,7 @@
   const secondaryMetric = document.getElementById("roc-secondary-metric");
   const metricCaption = document.getElementById("roc-metric-caption");
   const conceptNote = document.getElementById("roc-concept-note");
+  const figureKicker = document.getElementById("roc-figure-kicker");
 
   const defaults = {
     auc: {
@@ -19,11 +20,12 @@
       redSd: 1
     },
     affinity: {
-      blueLeft: -5,
-      blueRight: 5,
-      blueSd: 0.32,
-      redMean: 0,
-      redSd: 0.5
+      blueMean: 0,
+      blueSd: 0.5,
+      redLeft: -5,
+      redLeftSd: 0.32,
+      redRight: 5,
+      redRightSd: 0.32
     }
   };
 
@@ -40,10 +42,6 @@
     blueFill: "rgba(37, 99, 235, 0.18)",
     red: "#e14a61",
     redFill: "rgba(225, 74, 97, 0.18)",
-    trapBlue: "#111827",
-    trapBlueFill: "rgba(17, 24, 39, 0.13)",
-    trapRed: "#9aa0a6",
-    trapRedFill: "rgba(154, 160, 166, 0.20)",
     overlap: "rgba(67, 86, 108, 0.16)",
     roc: "#003366",
     grid: "#e5ebf1"
@@ -52,13 +50,13 @@
   const densityBaseView = {
     w: 640,
     h: 340,
-    m: { top: 18, right: 18, bottom: 44, left: 48 }
+    m: { top: 18, right: 18, bottom: 58, left: 64 }
   };
 
   const rocView = {
     w: 560,
     h: 340,
-    m: { top: 18, right: 20, bottom: 48, left: 54 }
+    m: { top: 18, right: 20, bottom: 60, left: 66 }
   };
 
   let drag = null;
@@ -95,39 +93,39 @@
 
   function blueDensity(x) {
     const p = state.params;
-    if (state.concept === "affinity") {
-      return 0.5 * normalPdf(x, p.blueLeft, p.blueSd) + 0.5 * normalPdf(x, p.blueRight, p.blueSd);
-    }
     return normalPdf(x, p.blueMean, p.blueSd);
   }
 
   function redDensity(x) {
     const p = state.params;
+    if (state.concept === "affinity") {
+      return 0.5 * normalPdf(x, p.redLeft, p.redLeftSd) + 0.5 * normalPdf(x, p.redRight, p.redRightSd);
+    }
     return normalPdf(x, p.redMean, p.redSd);
   }
 
   function blueCdf(x) {
     const p = state.params;
-    if (state.concept === "affinity") {
-      return 0.5 * normalCdf((x - p.blueLeft) / p.blueSd) + 0.5 * normalCdf((x - p.blueRight) / p.blueSd);
-    }
     return normalCdf((x - p.blueMean) / p.blueSd);
   }
 
   function redCdf(x) {
     const p = state.params;
+    if (state.concept === "affinity") {
+      return 0.5 * normalCdf((x - p.redLeft) / p.redLeftSd) + 0.5 * normalCdf((x - p.redRight) / p.redRightSd);
+    }
     return normalCdf((x - p.redMean) / p.redSd);
   }
 
   function allMeans() {
     const p = state.params;
-    if (state.concept === "affinity") return [p.blueLeft, p.redMean, p.blueRight];
+    if (state.concept === "affinity") return [p.redLeft, p.blueMean, p.redRight];
     return [p.blueMean, p.redMean];
   }
 
   function maxSd() {
     const p = state.params;
-    if (state.concept === "affinity") return Math.max(p.blueSd, p.redSd);
+    if (state.concept === "affinity") return Math.max(p.blueSd, p.redLeftSd, p.redRightSd);
     return Math.max(p.blueSd, p.redSd);
   }
 
@@ -228,25 +226,31 @@
       const x = xScale(tick);
       axis.appendChild(svgEl("line", { class: "roc-grid-line", x1: x, y1: m.top, x2: x, y2: h - m.bottom }));
       axis.appendChild(svgEl("line", { x1: x, y1: h - m.bottom, x2: x, y2: h - m.bottom + 5 }));
-      axis.appendChild(svgEl("text", { x, y: h - m.bottom + 20, "text-anchor": "middle", text: formatAxisTick(tick) }));
+      axis.appendChild(svgEl("text", { class: "roc-axis-tick", x, y: h - m.bottom + 22, "text-anchor": "middle", text: formatAxisTick(tick) }));
     });
 
     yTicks.forEach((tick) => {
       const y = yScale(tick);
       axis.appendChild(svgEl("line", { class: "roc-grid-line", x1: m.left, y1: y, x2: w - m.right, y2: y }));
       axis.appendChild(svgEl("line", { x1: m.left - 5, y1: y, x2: m.left, y2: y }));
-      axis.appendChild(svgEl("text", { x: m.left - 10, y: y + 4, "text-anchor": "end", text: formatAxisTick(tick) }));
+      axis.appendChild(svgEl("text", { class: "roc-axis-tick", x: m.left - 10, y: y + 4, "text-anchor": "end", text: formatAxisTick(tick) }));
     });
 
-    axis.appendChild(svgEl("text", { x: (m.left + w - m.right) / 2, y: h - 8, "text-anchor": "middle", text: xLabel }));
+    axis.appendChild(svgEl("text", { class: "roc-axis-label", x: (m.left + w - m.right) / 2, y: h - 10, "text-anchor": "middle", text: xLabel }));
     axis.appendChild(svgEl("text", {
-      x: 13,
+      class: "roc-axis-label",
+      x: 18,
       y: (m.top + h - m.bottom) / 2,
-      transform: `rotate(-90 13 ${(m.top + h - m.bottom) / 2})`,
+      transform: `rotate(-90 18 ${(m.top + h - m.bottom) / 2})`,
       "text-anchor": "middle",
       text: yLabel
     }));
     svg.appendChild(axis);
+  }
+
+  function densityYMax(points) {
+    const rawMax = Math.max(...points.map((p) => Math.max(p.blue, p.red))) * 1.18;
+    return Math.max(state.concept === "affinity" ? 1.05 : 0.9, rawMax);
   }
 
   function dataXFromPointer(event) {
@@ -256,6 +260,21 @@
     const span = view.xMax - view.xMin;
     const plotW = view.w - view.m.left - view.m.right;
     return view.xMin + ((px - view.m.left) / plotW) * span;
+  }
+
+  function dataPointFromPointer(event) {
+    const view = densityView();
+    const rect = densitySvg.getBoundingClientRect();
+    const px = ((event.clientX - rect.left) / rect.width) * view.w;
+    const py = ((event.clientY - rect.top) / rect.height) * view.h;
+    const span = view.xMax - view.xMin;
+    const plotW = view.w - view.m.left - view.m.right;
+    const plotH = view.h - view.m.top - view.m.bottom;
+    const yMax = drag?.yMax || 1;
+    return {
+      x: view.xMin + ((px - view.m.left) / plotW) * span,
+      y: ((view.h - view.m.bottom - py) / plotH) * yMax
+    };
   }
 
   function startMeanDrag(target, event) {
@@ -269,12 +288,13 @@
     densitySvg.setPointerCapture?.(event.pointerId);
   }
 
-  function startSpreadDrag(target, event) {
+  function startPeakDrag(target, yMax, event) {
     event.preventDefault();
     drag = {
-      kind: "spread",
+      kind: "peak",
       target,
       startX: dataXFromPointer(event),
+      yMax,
       snapshot: clone(state.params)
     };
     densitySvg.setPointerCapture?.(event.pointerId);
@@ -291,59 +311,62 @@
       return;
     }
 
-    if (drag.target === "bluePair") {
-      const shift = clamp(dx, -6.8 - s.blueLeft, 6.8 - s.blueRight);
-      p.blueLeft = s.blueLeft + shift;
-      p.blueRight = s.blueRight + shift;
+    if (drag.target === "redPair") {
+      const shift = clamp(dx, -6.8 - s.redLeft, 6.8 - s.redRight);
+      p.redLeft = s.redLeft + shift;
+      p.redRight = s.redRight + shift;
       return;
     }
 
-    if (drag.target === "blueLeft") {
-      p.blueLeft = clamp(s.blueLeft + dx, -6.8, s.blueRight - 0.9);
-      return;
-    }
-
-    if (drag.target === "blueRight") {
-      p.blueRight = clamp(s.blueRight + dx, s.blueLeft + 0.9, 6.8);
-      return;
-    }
-
-    if (drag.target === "red") {
-      p.redMean = clamp(s.redMean + dx, -3, 3);
+    if (drag.target === "blue") {
+      p.blueMean = clamp(s.blueMean + dx, -3, 3);
     }
   }
 
-  function setSpreadFromDrag(x) {
+  function spreadFromPeak(y, weight, minSd, maxSdValue) {
+    const peak = clamp(y, 0.01, 4);
+    return clamp(weight / (peak * Math.sqrt(2 * Math.PI)), minSd, maxSdValue);
+  }
+
+  function setPeakFromDrag(point) {
     const p = state.params;
     const s = drag.snapshot;
-    let anchor;
+    const dx = point.x - drag.startX;
 
     if (state.concept === "auc") {
       if (drag.target === "blue") {
-        p.blueSd = clamp(Math.abs(x - s.blueMean), 0.25, 2.4);
+        p.blueMean = clamp(s.blueMean + dx, -2.5, 2.5);
+        p.blueSd = spreadFromPeak(point.y, 1, 0.25, 2.4);
       }
       if (drag.target === "red") {
-        p.redSd = clamp(Math.abs(x - s.redMean), 0.25, 2.4);
+        p.redMean = clamp(s.redMean + dx, -0.5, 4.8);
+        p.redSd = spreadFromPeak(point.y, 1, 0.25, 2.4);
       }
       return;
     }
 
-    if (drag.target === "blueLeft") anchor = s.blueLeft;
-    if (drag.target === "blueRight") anchor = s.blueRight;
-    if (drag.target === "red") anchor = s.redMean;
+    if (drag.target === "blue") {
+      p.blueMean = clamp(s.blueMean + dx, -3, 3);
+      p.blueSd = spreadFromPeak(point.y, 1, 0.16, 1.8);
+      return;
+    }
 
-    if (drag.target === "red") {
-      p.redSd = clamp(Math.abs(x - anchor), 0.14, 1.8);
-    } else {
-      p.blueSd = clamp(Math.abs(x - anchor), 0.14, 1.4);
+    if (drag.target === "redLeft") {
+      p.redLeft = clamp(s.redLeft + dx, -6.8, p.redRight - 0.9);
+      p.redLeftSd = spreadFromPeak(point.y, 0.5, 0.14, 1.4);
+      return;
+    }
+
+    if (drag.target === "redRight") {
+      p.redRight = clamp(s.redRight + dx, p.redLeft + 0.9, 6.8);
+      p.redRightSd = spreadFromPeak(point.y, 0.5, 0.14, 1.4);
     }
   }
 
   function onPointerMove(event) {
     if (!drag) return;
-    const x = dataXFromPointer(event);
-    if (drag.kind === "mean") setMeanFromDrag(x);
-    if (drag.kind === "spread") setSpreadFromDrag(x);
+    if (drag.kind === "mean") setMeanFromDrag(dataXFromPointer(event));
+    if (drag.kind === "peak") setPeakFromDrag(dataPointFromPointer(event));
     setControlValues();
     render();
   }
@@ -352,59 +375,41 @@
     drag = null;
   }
 
-  function addMeanHandle(svg, x, y, color, target, text, xScale, yScale) {
+  function addPeakHandle(svg, x, y, color, target, text, xScale, yScale, yMax) {
     const cx = xScale(x);
     const cy = yScale(y);
     const group = svgEl("g", { style: "cursor: move;" });
     group.appendChild(svgEl("title", { text }));
-    group.addEventListener("pointerdown", (event) => startMeanDrag(target, event));
+    group.addEventListener("pointerdown", (event) => startPeakDrag(target, yMax, event));
     group.appendChild(svgEl("circle", {
       cx,
       cy,
-      r: 15,
+      r: 18,
       fill: "transparent",
       "pointer-events": "all"
     }));
     group.appendChild(svgEl("circle", {
       cx,
       cy,
-      r: 7,
+      r: 7.5,
       fill: color,
       stroke: "#fff",
       "stroke-width": 2
     }));
-    svg.appendChild(group);
-  }
-
-  function addSpreadHandle(svg, x, y, color, target, text, xScale, yScale) {
-    const cx = xScale(x);
-    const cy = yScale(y);
-    const group = svgEl("g", { style: "cursor: ew-resize;" });
-    group.appendChild(svgEl("title", { text }));
-    group.addEventListener("pointerdown", (event) => startSpreadDrag(target, event));
-    group.appendChild(svgEl("circle", {
-      cx,
-      cy,
-      r: 15,
-      fill: "transparent",
-      "pointer-events": "all"
-    }));
-    group.appendChild(svgEl("circle", {
-      cx,
-      cy,
-      r: 6.5,
-      fill: "#fff",
+    group.appendChild(svgEl("line", {
+      x1: cx,
+      x2: cx,
+      y1: cy - 13,
+      y2: cy + 13,
       stroke: color,
-      "stroke-width": 2.5
+      "stroke-linecap": "round",
+      "stroke-width": 2,
+      "pointer-events": "none"
     }));
     svg.appendChild(group);
   }
 
   function curveStyle(group) {
-    if (state.concept === "affinity") {
-      if (group === "blue") return { stroke: colors.trapBlue, fill: colors.trapBlueFill };
-      return { stroke: colors.trapRed, fill: colors.trapRedFill };
-    }
     if (group === "blue") return { stroke: colors.blue, fill: colors.blueFill };
     return { stroke: colors.red, fill: colors.redFill };
   }
@@ -433,32 +438,35 @@
     svg.appendChild(line);
   }
 
-  function drawAucHandles(xScale, yScale) {
+  function drawAucHandles(xScale, yScale, yMax) {
     const p = state.params;
     [
       { group: "blue", mean: p.blueMean, sd: p.blueSd },
       { group: "red", mean: p.redMean, sd: p.redSd }
     ].forEach(({ group, mean, sd }) => {
       const style = curveStyle(group);
-      addMeanHandle(densitySvg, mean, normalPdf(mean, mean, sd), style.stroke, group, `Move ${group} mean`, xScale, yScale);
-      addSpreadHandle(densitySvg, mean - sd, normalPdf(mean - sd, mean, sd), style.stroke, group, `Change ${group} variance`, xScale, yScale);
-      addSpreadHandle(densitySvg, mean + sd, normalPdf(mean + sd, mean, sd), style.stroke, group, `Change ${group} variance`, xScale, yScale);
+      addPeakHandle(
+        densitySvg,
+        mean,
+        normalPdf(mean, mean, sd),
+        style.stroke,
+        group,
+        `Move ${group} mode; drag up or down to change variance`,
+        xScale,
+        yScale,
+        yMax
+      );
     });
   }
 
-  function drawAffinityHandles(xScale, yScale) {
+  function drawAffinityHandles(xScale, yScale, yMax) {
     const p = state.params;
     const blueStyle = curveStyle("blue");
     const redStyle = curveStyle("red");
 
-    addMeanHandle(densitySvg, p.blueLeft, blueDensity(p.blueLeft), blueStyle.stroke, "blueLeft", "Move left tail", xScale, yScale);
-    addMeanHandle(densitySvg, p.blueRight, blueDensity(p.blueRight), blueStyle.stroke, "blueRight", "Move right tail", xScale, yScale);
-    addMeanHandle(densitySvg, p.redMean, redDensity(p.redMean), redStyle.stroke, "red", "Move central distribution", xScale, yScale);
-
-    addSpreadHandle(densitySvg, p.blueLeft + p.blueSd, blueDensity(p.blueLeft + p.blueSd), blueStyle.stroke, "blueLeft", "Change tail variance", xScale, yScale);
-    addSpreadHandle(densitySvg, p.blueRight - p.blueSd, blueDensity(p.blueRight - p.blueSd), blueStyle.stroke, "blueRight", "Change tail variance", xScale, yScale);
-    addSpreadHandle(densitySvg, p.redMean - p.redSd, redDensity(p.redMean - p.redSd), redStyle.stroke, "red", "Change central variance", xScale, yScale);
-    addSpreadHandle(densitySvg, p.redMean + p.redSd, redDensity(p.redMean + p.redSd), redStyle.stroke, "red", "Change central variance", xScale, yScale);
+    addPeakHandle(densitySvg, p.blueMean, blueDensity(p.blueMean), blueStyle.stroke, "blue", "Move healthy mode; drag up or down to change variance", xScale, yScale, yMax);
+    addPeakHandle(densitySvg, p.redLeft, redDensity(p.redLeft), redStyle.stroke, "redLeft", "Move left mixture component; drag up or down to change variance", xScale, yScale, yMax);
+    addPeakHandle(densitySvg, p.redRight, redDensity(p.redRight), redStyle.stroke, "redRight", "Move right mixture component; drag up or down to change variance", xScale, yScale, yMax);
   }
 
   function drawDensityPlot() {
@@ -471,7 +479,7 @@
       const x = xMin + (i / (n - 1)) * (xMax - xMin);
       return { x, blue: blueDensity(x), red: redDensity(x) };
     });
-    const yMax = Math.max(...points.map((p) => Math.max(p.blue, p.red))) * 1.18;
+    const yMax = densityYMax(points);
 
     const xScale = (x) => m.left + ((x - xMin) / (xMax - xMin)) * (w - m.left - m.right);
     const yScale = (y) => h - m.bottom - (y / yMax) * (h - m.top - m.bottom);
@@ -497,11 +505,11 @@
       stroke: "none"
     }));
 
-    drawCurve(densitySvg, "blue", bluePoints, xScale, yScale, state.concept === "affinity" ? "bluePair" : "blue");
-    drawCurve(densitySvg, "red", redPoints, xScale, yScale, "red");
+    drawCurve(densitySvg, "blue", bluePoints, xScale, yScale, "blue");
+    drawCurve(densitySvg, "red", redPoints, xScale, yScale, state.concept === "affinity" ? "redPair" : "red");
 
-    if (state.concept === "affinity") drawAffinityHandles(xScale, yScale);
-    else drawAucHandles(xScale, yScale);
+    if (state.concept === "affinity") drawAffinityHandles(xScale, yScale, yMax);
+    else drawAucHandles(xScale, yScale, yMax);
   }
 
   function drawRocPlot() {
@@ -561,17 +569,19 @@
     const affinity = affinityValue();
 
     if (state.concept === "auc") {
+      if (figureKicker) figureKicker.textContent = "Fig. 1.3 companion";
       metricLabel.textContent = "AUC";
       metricValue.textContent = formatNumber(auc);
       secondaryMetric.textContent = "";
       metricCaption.textContent = "Area Under the Curve";
       conceptNote.textContent = "";
     } else {
+      if (figureKicker) figureKicker.textContent = "Fig. X companion";
       metricLabel.textContent = "affinity";
       metricValue.textContent = formatNumber(affinity);
       secondaryMetric.textContent = `AUC ${formatNumber(auc)}`;
       metricCaption.textContent = "Distributional affinity";
-      conceptNote.textContent = "Separation trap: AUC can be 0.5 with almost no overlap.";
+      conceptNote.textContent = Math.abs(auc - 0.5) < 0.0005 ? "Separation trap: AUC = 0.500 despite little overlap." : "";
     }
   }
 
