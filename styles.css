@@ -214,6 +214,12 @@ main.content h2 {
   font-size: 0.85rem;
   font-weight: 700;
   grid-column: 1 / -1;
+  line-height: 1.45;
+}
+
+.roc-ess-line {
+  color: #536779;
+  font-weight: 700;
 }
 
 .roc-dashboard-body {

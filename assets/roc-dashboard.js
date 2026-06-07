@@ -180,8 +180,11 @@
         yTicks: param.yTicks.map(Number).filter((tick) => tick >= param.yMin && tick <= param.yMax),
         densityGrid: param.densityGrid.map(Number),
         histBreaks: param.histBreaks.map(Number),
+        finalEss: Number(param.finalEss),
         frames: param.frames.map((frame) => ({
           count: Number(frame.count),
+          phase: frame.phase || "retained",
+          ess: frame.ess === null || frame.ess === undefined ? null : Number(frame.ess),
           density: frame.density.map(Number),
           hist: frame.hist.map(Number)
         }))
@@ -382,6 +385,21 @@
 
   function formatCount(value) {
     return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  }
+
+  function formatEssNumber(value) {
+    if (!Number.isFinite(value)) return "--";
+    const [whole, decimal] = value.toFixed(1).split(".");
+    return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, " ")}.${decimal}`;
+  }
+
+  function traceEssLine(data, count) {
+    if (!data?.params?.length || count <= data.burn) return "ESS --";
+    const parts = data.params.map((param) => {
+      const frame = mcmcDensityFrame(param, count);
+      return `${param.mathLabel || param.label} ${formatEssNumber(frame.ess)}`;
+    });
+    return `ESS ${parts.join(" · ")}`;
   }
 
   function setControlValues() {
@@ -814,8 +832,8 @@
 
   function mcmcDensityMax(param) {
     if (!param._densityMax) {
-      const finalFrame = param.frames[param.frames.length - 1];
-      param._densityMax = Math.max(1e-6, ...finalFrame.density, ...finalFrame.hist) * 1.05;
+      const values = param.frames.flatMap((frame) => [...frame.density, ...frame.hist]);
+      param._densityMax = Math.max(1e-6, ...values) * 1.05;
     }
     return param._densityMax;
   }
@@ -931,6 +949,8 @@
     const yScale = mcmcYScale(row, param);
     const xScale = mcmcDensityScale(row, param);
     const histBreaks = param.histBreaks;
+    const isBurn = frame.phase === "burn";
+    const densityColor = isBurn ? "#ff0000" : "steelblue";
 
     frame.hist.forEach((density, index) => {
       const yMin = histBreaks[index];
@@ -943,10 +963,10 @@
         y,
         width: xScale(density) - row.densityX0,
         height,
-        fill: "steelblue",
-        stroke: "steelblue",
+        fill: densityColor,
+        stroke: densityColor,
         "stroke-width": 0.35,
-        opacity: 0.30
+        opacity: isBurn ? 0.22 : 0.30
       }));
     });
 
@@ -954,9 +974,9 @@
     if (area) {
       svg.appendChild(svgEl("path", {
         d: area,
-        fill: "steelblue",
+        fill: densityColor,
         stroke: "none",
-        opacity: 0.10
+        opacity: isBurn ? 0.12 : 0.10
       }));
     }
 
@@ -965,11 +985,11 @@
       svg.appendChild(svgEl("path", {
         d: line,
         fill: "none",
-        stroke: "steelblue",
+        stroke: densityColor,
         "stroke-width": 1.35,
         "stroke-linejoin": "round",
         "stroke-linecap": "round",
-        opacity: 0.90
+        opacity: isBurn ? 0.78 : 0.90
       }));
     }
   }
@@ -1008,6 +1028,7 @@
   }
 
   function updateMcmcMetric(frame, config = traceConfig()) {
+    const data = config?.data;
     clearDashboardClasses();
     if (figureKicker) figureKicker.textContent = config?.figureKicker || "";
     if (dashboardTitle) dashboardTitle.textContent = config?.title || "";
@@ -1015,7 +1036,7 @@
     if (rightPanelTitle) rightPanelTitle.textContent = config?.rightPanelTitle || "Posterior densigrams";
     metricLabel.textContent = config?.metricLabel || "iteration";
     metricValue.textContent = formatCount(frame.count);
-    secondaryMetric.textContent = `retained draws ${formatCount(frame.retained)}`;
+    secondaryMetric.innerHTML = `retained draws ${formatCount(frame.retained)}<br><span class="roc-ess-line">${traceEssLine(data, frame.count)}</span>`;
     metricCaption.innerHTML = config?.caption || "";
     conceptNote.innerHTML = config?.note || "";
     root.classList.add("is-mcmc");
