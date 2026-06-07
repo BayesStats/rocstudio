@@ -17,6 +17,7 @@
 
   const defaults = {
     mcmc: {},
+    fig27: {},
     auc: {
       blueMean: 0,
       blueSd: 1,
@@ -30,11 +31,13 @@
       redLeftSd: 0.32,
       redRight: 5,
       redRightSd: 0.32
-    }
+    },
+    overlap: {},
+    optimizer: {}
   };
 
   const requestedConcept = new URLSearchParams(window.location.search).get("concept");
-  const conceptNames = new Set(["mcmc", "auc", "affinity"]);
+  const conceptNames = new Set(["mcmc", "fig27", "auc", "affinity", "overlap", "optimizer"]);
   const initialConcept = conceptNames.has(requestedConcept) ? requestedConcept : "mcmc";
 
   const state = {
@@ -69,23 +72,56 @@
     m: { top: 18, right: 20, bottom: 60, left: 66 }
   };
 
-  const fig31View = {
+  const traceBaseView = {
     w: 880,
-    h: 648,
     m: { top: 22, right: 26, bottom: 34, left: 62 },
     traceWidth: 650,
     densityGap: 12,
     densityWidth: 92,
     rowHeight: 148,
-    rowGap: 34,
-    xMin: 0,
-    xMax: 20000,
-    xTicks: [0, 5000, 10000, 15000, 20000]
+    rowGap: 34
   };
 
-  const mcmc = createFig31Data(window.ROCSTUDIO_FIG31_CHAINS);
-  const mcmcCycleMs = 18000;
-  const mcmcHoldMs = 1500;
+  const optimizerView = {
+    w: 880,
+    h: 560,
+    m: { top: 36, right: 34, bottom: 64, left: 78 }
+  };
+
+  const traceDatasets = {
+    mcmc: {
+      data: createFig31Data(window.ROCSTUDIO_FIG31_CHAINS),
+      figureKicker: "Fig. 3.1 companion",
+      title: "Inference for sensitivity, specificity, and prevalence",
+      leftPanelTitle: "Trace plots and posterior densigrams",
+      rightPanelTitle: "Posterior densigrams",
+      metricLabel: "iteration",
+      caption: "Accuracy of Exercise Stress Test<br>Gibbs Sampler",
+      note: "Figure 3.1 traces the Gibbs sampler for sensitivity, specificity, and prevalence; burn-in is red, retained iterations are steelblue, and the posterior densigrams update on the right. <code class=\"roc-concept-command\">ROCstudio::perfn()</code>",
+      ariaLabel: "Figure 3.1 companion showing sensitivity, specificity, and prevalence MCMC traces and posterior densigrams",
+      emptyMessage: "Fig. 3.1 chain data could not be loaded.",
+      cycleMs: 18000,
+      holdMs: 1500
+    },
+    fig27: {
+      data: createFig31Data(window.ROCSTUDIO_FIG27_CHAINS),
+      figureKicker: "Fig. 2.7 companion",
+      title: "Inference for mean and standard deviation",
+      leftPanelTitle: "Trace plots and posterior densigrams",
+      rightPanelTitle: "Posterior densigrams",
+      metricLabel: "iteration",
+      caption: "Lung-cancer marker data<br>Normal Gibbs sampler",
+      note: "Figure 2.7 traces the Gibbs sampler for μ and σ on the log lung-cancer marker scale; burn-in is red, retained iterations are steelblue, and the posterior densigrams update on the right.",
+      ariaLabel: "Figure 2.7 companion showing normal-model Gibbs sampler traces and posterior densigrams",
+      emptyMessage: "Fig. 2.7 chain data could not be loaded.",
+      cycleMs: 15000,
+      holdMs: 1200
+    }
+  };
+
+  const optimizerData = createOptimizerData(window.ROCSTUDIO_FIG43_OPTIMIZER);
+  const optimizerCycleMs = 10500;
+  const optimizerHoldMs = 1400;
   let animationFrame = null;
   let animationStart = null;
   let lastMovieDraw = 0;
@@ -151,6 +187,76 @@
         }))
       }))
     };
+  }
+
+  function createOptimizerData(raw) {
+    if (!raw || !Array.isArray(raw.path) || !Array.isArray(raw.muGrid) || !Array.isArray(raw.varianceGrid)) {
+      return {
+        path: [],
+        muGrid: [],
+        varianceGrid: [],
+        relLik: [],
+        xRange: [0, 1],
+        yRange: [0, 1],
+        xTicks: [0, 1],
+        yTicks: [0, 1],
+        mle: { mu: 0, variance: 0, sigma: 0 }
+      };
+    }
+
+    const xRange = raw.xRange.map(Number);
+    const yRange = raw.yRange.map(Number);
+
+    return {
+      n: Number(raw.n || 0),
+      xRange,
+      yRange,
+      xTicks: raw.xTicks.map(Number).filter((tick) => tick >= xRange[0] && tick <= xRange[1]),
+      yTicks: raw.yTicks.map(Number).filter((tick) => tick >= yRange[0] && tick <= yRange[1]),
+      muGrid: raw.muGrid.map(Number),
+      varianceGrid: raw.varianceGrid.map(Number),
+      relLik: raw.relLik.map(Number),
+      mle: {
+        mu: Number(raw.mle.mu),
+        variance: Number(raw.mle.variance),
+        sigma: Number(raw.mle.sigma)
+      },
+      path: raw.path.map((point) => ({
+        step: Number(point.step),
+        mu: Number(point.mu),
+        variance: Number(point.variance),
+        sigma: Number(point.sigma),
+        logLik: Number(point.logLik),
+        relLik: Number(point.relLik)
+      }))
+    };
+  }
+
+  function traceConfig() {
+    return traceDatasets[state.concept] || null;
+  }
+
+  function traceTicks(total) {
+    if (total >= 20000) return [0, 5000, 10000, 15000, 20000];
+    if (total >= 10000) return [0, 2500, 5000, 7500, 10000];
+    const step = Math.max(1, Math.round(total / 4));
+    return [0, step, 2 * step, 3 * step, total];
+  }
+
+  function traceViewFor(data) {
+    const rows = Math.max(1, data?.params?.length || 1);
+    const h = traceBaseView.m.top + rows * traceBaseView.rowHeight + (rows - 1) * traceBaseView.rowGap + traceBaseView.m.bottom;
+    return {
+      ...traceBaseView,
+      h,
+      xMin: 0,
+      xMax: data?.total || 1,
+      xTicks: traceTicks(data?.total || 1)
+    };
+  }
+
+  function clearDashboardClasses() {
+    root.classList.remove("is-mcmc", "is-fig27", "is-optimizer");
   }
 
   function blueDensity(x) {
@@ -662,37 +768,39 @@
     svg.appendChild(axis);
   }
 
-  function mcmcFrame(timestamp) {
-    if (!mcmc.total) return { count: 0, progress: 0, retained: 0 };
+  function mcmcFrame(timestamp, config = traceConfig()) {
+    const data = config?.data;
+    if (!data?.total) return { count: 0, progress: 0, retained: 0 };
     if (animationStart === null) animationStart = timestamp;
-    const activeMs = mcmcCycleMs - mcmcHoldMs;
-    const elapsed = (timestamp - animationStart) % mcmcCycleMs;
+    const cycleMs = config.cycleMs || 18000;
+    const activeMs = cycleMs - (config.holdMs || 0);
+    const elapsed = (timestamp - animationStart) % cycleMs;
     const progress = clamp(elapsed / activeMs, 0, 1);
-    const count = clamp(Math.floor(1 + progress * (mcmc.total - 1)), 1, mcmc.total);
+    const count = clamp(Math.floor(1 + progress * (data.total - 1)), 1, data.total);
     return {
       count,
       progress,
-      retained: Math.max(0, count - mcmc.burn)
+      retained: Math.max(0, count - data.burn)
     };
   }
 
-  function mcmcRowLayout(index) {
-    const y0 = fig31View.m.top + index * (fig31View.rowHeight + fig31View.rowGap);
-    const x0 = fig31View.m.left;
-    const traceX1 = x0 + fig31View.traceWidth;
-    const densityX0 = traceX1 + fig31View.densityGap;
+  function mcmcRowLayout(index, view) {
+    const y0 = view.m.top + index * (view.rowHeight + view.rowGap);
+    const x0 = view.m.left;
+    const traceX1 = x0 + view.traceWidth;
+    const densityX0 = traceX1 + view.densityGap;
     return {
       x0,
       x1: traceX1,
       densityX0,
-      densityX1: densityX0 + fig31View.densityWidth,
+      densityX1: densityX0 + view.densityWidth,
       y0,
-      y1: y0 + fig31View.rowHeight
+      y1: y0 + view.rowHeight
     };
   }
 
-  function mcmcXScale(row) {
-    return (value) => row.x0 + ((value - fig31View.xMin) / (fig31View.xMax - fig31View.xMin)) * (row.x1 - row.x0);
+  function mcmcXScale(row, view) {
+    return (value) => row.x0 + ((value - view.xMin) / (view.xMax - view.xMin)) * (row.x1 - row.x0);
   }
 
   function mcmcYScale(row, param) {
@@ -751,8 +859,8 @@
     }).join(" ");
   }
 
-  function drawMcmcAxes(svg, row, param, rowIndex) {
-    const xScale = mcmcXScale(row);
+  function drawMcmcAxes(svg, row, param, rowIndex, view) {
+    const xScale = mcmcXScale(row, view);
     const yScale = mcmcYScale(row, param);
     const axis = svgEl("g", { class: "roc-axis roc-mcmc-axis" });
 
@@ -760,7 +868,7 @@
     axis.appendChild(svgEl("line", { x1: row.x0, y1: row.y0, x2: row.x0, y2: row.y1 }));
     axis.appendChild(svgEl("line", { x1: row.densityX0, y1: row.y0, x2: row.densityX0, y2: row.y1 }));
 
-    fig31View.xTicks.forEach((tick) => {
+    view.xTicks.forEach((tick) => {
       const x = xScale(tick);
       axis.appendChild(svgEl("line", { class: "roc-grid-line", x1: x, y1: row.y0, x2: x, y2: row.y1 }));
       axis.appendChild(svgEl("line", { x1: x, y1: row.y1, x2: x, y2: row.y1 + 4 }));
@@ -781,18 +889,18 @@
       y: (row.y0 + row.y1) / 2,
       transform: `rotate(-90 ${row.x0 - 42} ${(row.y0 + row.y1) / 2})`,
       "text-anchor": "middle",
-      text: rowIndex === 2 ? "π" : param.label
+      text: param.mathLabel || param.label
     }));
 
     svg.appendChild(axis);
   }
 
-  function drawMcmcTraceRow(svg, row, param, frame) {
-    const xScale = mcmcXScale(row);
+  function drawMcmcTraceRow(svg, row, param, frame, data, view) {
+    const xScale = mcmcXScale(row, view);
     const yScale = mcmcYScale(row, param);
-    const burnEnd = Math.min(frame.count, mcmc.burn);
-    const keptStart = Math.max(mcmc.burn + 1, 1);
-    const keptEnd = Math.min(frame.count, mcmc.total);
+    const burnEnd = Math.min(frame.count, data.burn);
+    const keptStart = Math.max(data.burn + 1, 1);
+    const keptEnd = Math.min(frame.count, data.total);
 
     if (burnEnd > 1) {
       svg.appendChild(svgEl("path", {
@@ -866,65 +974,330 @@
     }
   }
 
-  function drawMcmcFigure(frame) {
-    clear(densitySvg, fig31View);
-    densitySvg.setAttribute("aria-label", "Figure 3.1 companion showing sensitivity, specificity, and prevalence MCMC traces and posterior densigrams");
+  function drawMcmcFigure(frame, config = traceConfig()) {
+    const data = config?.data || { params: [], total: 0 };
+    const view = traceViewFor(data);
+    clear(densitySvg, view);
+    densitySvg.setAttribute("aria-label", config?.ariaLabel || "MCMC trace plots and posterior densigrams");
 
     densitySvg.appendChild(svgEl("rect", {
       x: 0,
       y: 0,
-      width: fig31View.w,
-      height: fig31View.h,
+      width: view.w,
+      height: view.h,
       fill: "#fff"
     }));
 
-    if (!mcmc.total || !mcmc.params.length) {
+    if (!data.total || !data.params.length) {
       densitySvg.appendChild(svgEl("text", {
-        x: fig31View.w / 2,
-        y: fig31View.h / 2,
+        x: view.w / 2,
+        y: view.h / 2,
         "text-anchor": "middle",
-        text: "Fig. 3.1 chain data could not be loaded."
+        text: config?.emptyMessage || "Chain data could not be loaded."
       }));
       return;
     }
 
-    mcmc.params.forEach((param, index) => {
-      const row = mcmcRowLayout(index);
+    data.params.forEach((param, index) => {
+      const row = mcmcRowLayout(index, view);
       const densityFrame = mcmcDensityFrame(param, frame.count);
-      drawMcmcAxes(densitySvg, row, param, index);
-      drawMcmcTraceRow(densitySvg, row, param, frame);
+      drawMcmcAxes(densitySvg, row, param, index, view);
+      drawMcmcTraceRow(densitySvg, row, param, frame, data, view);
       drawMcmcDensityRow(densitySvg, row, param, densityFrame);
     });
   }
 
-  function updateMcmcMetric(frame) {
-    if (figureKicker) figureKicker.textContent = "Fig. 3.1 companion";
-    if (dashboardTitle) dashboardTitle.textContent = "Inference for sensitivity, specificity, and prevalence";
-    if (leftPanelTitle) leftPanelTitle.textContent = "Trace plots and posterior densigrams";
-    if (rightPanelTitle) rightPanelTitle.textContent = "Posterior densigrams";
-    metricLabel.textContent = "iteration";
+  function updateMcmcMetric(frame, config = traceConfig()) {
+    clearDashboardClasses();
+    if (figureKicker) figureKicker.textContent = config?.figureKicker || "";
+    if (dashboardTitle) dashboardTitle.textContent = config?.title || "";
+    if (leftPanelTitle) leftPanelTitle.textContent = config?.leftPanelTitle || "Trace plots and posterior densigrams";
+    if (rightPanelTitle) rightPanelTitle.textContent = config?.rightPanelTitle || "Posterior densigrams";
+    metricLabel.textContent = config?.metricLabel || "iteration";
     metricValue.textContent = formatCount(frame.count);
     secondaryMetric.textContent = `retained draws ${formatCount(frame.retained)}`;
-    metricCaption.innerHTML = "Accuracy of Exercise Stress Test<br>Gibbs Sampler";
-    conceptNote.innerHTML = "Figure 3.1 traces the Gibbs sampler for sensitivity, specificity, and prevalence; burn-in is red, retained iterations are steelblue, and the posterior densigrams update on the right. <code class=\"roc-concept-command\">ROCstudio::perfn()</code>";
+    metricCaption.innerHTML = config?.caption || "";
+    conceptNote.innerHTML = config?.note || "";
     root.classList.add("is-mcmc");
+    if (state.concept === "fig27") root.classList.add("is-fig27");
   }
 
   function drawMcmcMovie(timestamp, suppliedFrame) {
-    const frame = suppliedFrame || mcmcFrame(timestamp);
-    drawMcmcFigure(frame);
-    updateMcmcMetric(frame);
+    const config = traceConfig();
+    const frame = suppliedFrame || mcmcFrame(timestamp, config);
+    drawMcmcFigure(frame, config);
+    updateMcmcMetric(frame, config);
+  }
+
+  function integrateFixed(fn, min, max, steps = 1200) {
+    const h = (max - min) / steps;
+    let total = 0;
+    for (let i = 0; i <= steps; i += 1) {
+      const x = min + i * h;
+      const weight = i === 0 || i === steps ? 0.5 : 1;
+      total += weight * fn(x);
+    }
+    return total * h;
+  }
+
+  function overlapComparisonStats() {
+    const min = -8;
+    const max = 8;
+    const f0 = (x) => normalPdf(x, -1, 1);
+    const f1 = (x) => normalPdf(x, 1, 1);
+    return {
+      overlap: clamp(integrateFixed((x) => Math.min(f0(x), f1(x)), min, max), 0, 1),
+      affinity: clamp(integrateFixed((x) => Math.sqrt(f0(x) * f1(x)), min, max), 0, 1)
+    };
+  }
+
+  function overlapPanelView() {
+    return { ...densityBaseView, xMin: -4, xMax: 4, xTicks: [-4, -2, 0, 2, 4] };
+  }
+
+  function drawOverlapComparisonPanel(svg, mode) {
+    const view = overlapPanelView();
+    const { w, h, m, xMin, xMax } = view;
+    clear(svg, view);
+    svg.setAttribute("aria-label", mode === "overlap" ? "Figure 7.3 coefficient of overlap panel" : "Figure 7.3 affinity panel");
+
+    const n = 260;
+    const points = Array.from({ length: n }, (_, i) => {
+      const x = xMin + (i / (n - 1)) * (xMax - xMin);
+      const healthy = normalPdf(x, -1, 1);
+      const diseased = normalPdf(x, 1, 1);
+      return {
+        x,
+        healthy,
+        diseased,
+        overlap: Math.min(healthy, diseased),
+        affinity: Math.sqrt(healthy * diseased)
+      };
+    });
+    const yMax = 0.5;
+    const xScale = (x) => m.left + ((x - xMin) / (xMax - xMin)) * (w - m.left - m.right);
+    const yScale = (y) => h - m.bottom - (y / yMax) * (h - m.top - m.bottom);
+    const areaKey = mode === "overlap" ? "overlap" : "affinity";
+    const dashArray = mode === "overlap" ? "8 6" : "2 5";
+
+    drawCartesianAxes(svg, view, xScale, yScale, view.xTicks, [0, 0.25, 0.5], "Diagnostic outcome", "Density");
+
+    svg.appendChild(svgEl("path", {
+      d: areaPath(points.map((p) => ({ x: p.x, y: p[areaKey] })), xScale, yScale, 0),
+      fill: mode === "overlap" ? "rgba(67, 86, 108, 0.18)" : "rgba(217, 154, 33, 0.20)",
+      stroke: "none"
+    }));
+    svg.appendChild(svgEl("path", {
+      d: linePath(points.map((p) => ({ x: p.x, y: p.healthy })), xScale, yScale),
+      fill: "none",
+      stroke: colors.blue,
+      "stroke-width": 2.8,
+      "stroke-linejoin": "round",
+      "stroke-linecap": "round"
+    }));
+    svg.appendChild(svgEl("path", {
+      d: linePath(points.map((p) => ({ x: p.x, y: p.diseased })), xScale, yScale),
+      fill: "none",
+      stroke: colors.red,
+      "stroke-width": 2.8,
+      "stroke-linejoin": "round",
+      "stroke-linecap": "round"
+    }));
+    svg.appendChild(svgEl("path", {
+      d: linePath(points.map((p) => ({ x: p.x, y: p[areaKey] })), xScale, yScale),
+      fill: "none",
+      stroke: "#111",
+      "stroke-width": 2.2,
+      "stroke-dasharray": dashArray,
+      "stroke-linejoin": "round",
+      "stroke-linecap": "round"
+    }));
+  }
+
+  function drawOverlapFigure() {
+    clearDashboardClasses();
+    drawOverlapComparisonPanel(densitySvg, "overlap");
+    drawOverlapComparisonPanel(rocSvg, "affinity");
+  }
+
+  function updateOverlapMetric() {
+    const stats = overlapComparisonStats();
+    clearDashboardClasses();
+    if (figureKicker) figureKicker.textContent = "Fig. 7.3 companion";
+    if (dashboardTitle) dashboardTitle.textContent = "Affinity and overlap";
+    if (leftPanelTitle) leftPanelTitle.textContent = "Overlap";
+    if (rightPanelTitle) rightPanelTitle.textContent = "Affinity";
+    metricLabel.textContent = "Overlap";
+    metricValue.textContent = formatNumber(stats.overlap);
+    secondaryMetric.textContent = `Affinity ${formatNumber(stats.affinity)}`;
+    metricCaption.textContent = "Coefficient of overlap";
+    conceptNote.textContent = "Figure 7.3 compares the coefficient of overlap with affinity for two normal outcome distributions.";
+  }
+
+  function optimizerFrame(timestamp) {
+    const data = optimizerData;
+    if (!data.path.length) return { frameIndex: 0, step: 0, point: null, visiblePath: [] };
+    if (animationStart === null) animationStart = timestamp;
+    const activeMs = optimizerCycleMs - optimizerHoldMs;
+    const elapsed = (timestamp - animationStart) % optimizerCycleMs;
+    const progress = clamp(elapsed / activeMs, 0, 1);
+    const segments = Math.max(1, data.path.length - 1);
+    const position = progress * segments;
+    const index = Math.min(Math.floor(position), data.path.length - 1);
+    const nextIndex = Math.min(index + 1, data.path.length - 1);
+    const localProgress = nextIndex === index ? 0 : position - index;
+    const p0 = data.path[index];
+    const p1 = data.path[nextIndex];
+    const point = {
+      step: index,
+      mu: p0.mu + (p1.mu - p0.mu) * localProgress,
+      variance: p0.variance + (p1.variance - p0.variance) * localProgress,
+      sigma: p0.sigma + (p1.sigma - p0.sigma) * localProgress,
+      relLik: p0.relLik + (p1.relLik - p0.relLik) * localProgress
+    };
+    const visiblePath = data.path.slice(0, index + 1);
+    if (localProgress > 0 && nextIndex > index) visiblePath.push(point);
+    return {
+      frameIndex: Math.round(progress * 240),
+      step: index,
+      progress,
+      point,
+      visiblePath
+    };
+  }
+
+  function drawOptimizerHeatmap(svg, view, xScale, yScale) {
+    const data = optimizerData;
+    const nx = data.muGrid.length;
+    const ny = data.varianceGrid.length;
+    const stepX = 2;
+    const stepY = 2;
+    for (let j = 0; j < ny - 1; j += stepY) {
+      for (let i = 0; i < nx - 1; i += stepX) {
+        const rel = data.relLik[i + nx * j] || 0;
+        if (rel < 0.001) continue;
+        const x0 = xScale(data.muGrid[i]);
+        const x1 = xScale(data.muGrid[Math.min(i + stepX, nx - 1)]);
+        const y0 = yScale(data.varianceGrid[j]);
+        const y1 = yScale(data.varianceGrid[Math.min(j + stepY, ny - 1)]);
+        const opacity = 0.04 + 0.58 * Math.pow(rel, 0.44);
+        svg.appendChild(svgEl("rect", {
+          x: Math.min(x0, x1),
+          y: Math.min(y0, y1),
+          width: Math.max(0.5, Math.abs(x1 - x0)),
+          height: Math.max(0.5, Math.abs(y1 - y0)),
+          fill: `rgba(37, 99, 235, ${opacity.toFixed(3)})`,
+          stroke: "none"
+        }));
+      }
+    }
+  }
+
+  function drawOptimizerFigure(frame) {
+    const data = optimizerData;
+    const view = optimizerView;
+    const { w, h, m } = view;
+    clear(densitySvg, view);
+    densitySvg.setAttribute("aria-label", "Figure 4.3 companion showing optimizer trajectory over a normal likelihood surface");
+
+    densitySvg.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, fill: "#fff" }));
+    if (!data.path.length) {
+      densitySvg.appendChild(svgEl("text", {
+        x: w / 2,
+        y: h / 2,
+        "text-anchor": "middle",
+        text: "Fig. 4.3 optimizer data could not be loaded."
+      }));
+      return;
+    }
+
+    const xMin = data.xRange[0];
+    const xMax = data.xRange[1];
+    const yMin = data.yRange[0];
+    const yMax = data.yRange[1];
+    const xScale = (x) => m.left + ((x - xMin) / (xMax - xMin)) * (w - m.left - m.right);
+    const yScale = (y) => h - m.bottom - ((y - yMin) / (yMax - yMin)) * (h - m.top - m.bottom);
+
+    drawOptimizerHeatmap(densitySvg, view, xScale, yScale);
+    drawCartesianAxes(densitySvg, view, xScale, yScale, data.xTicks, data.yTicks, "Mean μ", "Variance σ²");
+
+    if (frame.visiblePath.length > 1) {
+      densitySvg.appendChild(svgEl("path", {
+        d: linePath(frame.visiblePath.map((p) => ({ x: p.mu, y: p.variance })), xScale, yScale),
+        fill: "none",
+        stroke: colors.red,
+        "stroke-width": 4.2,
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round"
+      }));
+    }
+
+    frame.visiblePath.forEach((point, index) => {
+      densitySvg.appendChild(svgEl("circle", {
+        cx: xScale(point.mu),
+        cy: yScale(point.variance),
+        r: index === frame.visiblePath.length - 1 ? 6.4 : 3.2,
+        fill: index === frame.visiblePath.length - 1 ? colors.gold : "#ffffff",
+        stroke: index === frame.visiblePath.length - 1 ? "#8a5b00" : colors.red,
+        "stroke-width": index === frame.visiblePath.length - 1 ? 2 : 1.4
+      }));
+    });
+
+    densitySvg.appendChild(addTitle(svgEl("text", {
+      x: xScale(data.mle.mu),
+      y: yScale(data.mle.variance) + 8,
+      "text-anchor": "middle",
+      fill: "#111",
+      "font-size": 28,
+      "font-weight": 700,
+      text: "★"
+    }), "Maximum likelihood estimate"));
+  }
+
+  function updateOptimizerMetric(frame) {
+    clearDashboardClasses();
+    root.classList.add("is-mcmc", "is-optimizer");
+    if (figureKicker) figureKicker.textContent = "Fig. 4.3 companion";
+    if (dashboardTitle) dashboardTitle.textContent = "Optimization";
+    if (leftPanelTitle) leftPanelTitle.textContent = "Likelihood and optimizer trajectory";
+    if (rightPanelTitle) rightPanelTitle.textContent = "";
+    metricLabel.textContent = "step";
+    metricValue.textContent = formatCount(frame.step);
+    if (frame.point) {
+      secondaryMetric.textContent = `μ ${frame.point.mu.toFixed(3)}   σ² ${frame.point.variance.toFixed(3)}`;
+    } else {
+      secondaryMetric.textContent = "";
+    }
+    metricCaption.textContent = "Normal likelihood";
+    conceptNote.textContent = "Figure 4.3 companion shows the optimizer moving across the normal likelihood for the log lung-cancer marker example until it reaches the estimate; the movie then restarts.";
+  }
+
+  function drawOptimizerMovie(timestamp, suppliedFrame) {
+    const frame = suppliedFrame || optimizerFrame(timestamp);
+    drawOptimizerFigure(frame);
+    updateOptimizerMetric(frame);
   }
 
   function updateMetric() {
-    if (state.concept === "mcmc") {
-      updateMcmcMetric(mcmcFrame(performance.now()));
+    const currentTrace = traceConfig();
+    if (currentTrace) {
+      updateMcmcMetric(mcmcFrame(performance.now(), currentTrace), currentTrace);
+      return;
+    }
+
+    if (state.concept === "optimizer") {
+      updateOptimizerMetric(optimizerFrame(performance.now()));
+      return;
+    }
+
+    if (state.concept === "overlap") {
+      updateOverlapMetric();
       return;
     }
 
     const auc = aucValue();
     const affinity = affinityValue();
-    root.classList.remove("is-mcmc");
+    clearDashboardClasses();
     if (dashboardTitle) dashboardTitle.textContent = "Diagnostic outcome curves";
     if (leftPanelTitle) leftPanelTitle.textContent = "Outcome distributions";
     if (rightPanelTitle) rightPanelTitle.textContent = "ROC curve";
@@ -937,8 +1310,8 @@
       metricCaption.textContent = "Area Under the Curve";
       conceptNote.textContent = "";
     } else {
-      if (figureKicker) figureKicker.textContent = "Fig. X companion";
-      metricLabel.textContent = "affinity";
+      if (figureKicker) figureKicker.textContent = "Fig. 7.2 companion";
+      metricLabel.textContent = "Affinity";
       metricValue.textContent = formatNumber(affinity);
       secondaryMetric.textContent = `AUC ${formatNumber(auc)}`;
       metricCaption.textContent = "Distributional affinity";
@@ -947,8 +1320,17 @@
   }
 
   function render() {
-    if (state.concept === "mcmc") {
+    if (traceConfig()) {
       drawMcmcMovie(performance.now());
+      return;
+    }
+    if (state.concept === "optimizer") {
+      drawOptimizerMovie(performance.now());
+      return;
+    }
+    if (state.concept === "overlap") {
+      drawOverlapFigure();
+      updateMetric();
       return;
     }
     drawDensityPlot();
@@ -969,12 +1351,16 @@
     lastMovieDraw = 0;
     lastMovieCount = 0;
     const animate = (timestamp) => {
-      if (state.concept !== "mcmc") return;
-      const frame = mcmcFrame(timestamp);
-      if (timestamp - lastMovieDraw >= 70 || frame.count < lastMovieCount || frame.count === mcmc.total) {
-        drawMcmcMovie(timestamp, frame);
+      const currentTrace = traceConfig();
+      if (!currentTrace && state.concept !== "optimizer") return;
+      const frame = currentTrace ? mcmcFrame(timestamp, currentTrace) : optimizerFrame(timestamp);
+      const frameKey = currentTrace ? frame.count : frame.frameIndex;
+      const finalKey = currentTrace ? currentTrace.data.total : 240;
+      if (timestamp - lastMovieDraw >= 70 || frameKey < lastMovieCount || frameKey === finalKey) {
+        if (currentTrace) drawMcmcMovie(timestamp, frame);
+        else drawOptimizerMovie(timestamp, frame);
         lastMovieDraw = timestamp;
-        lastMovieCount = frame.count;
+        lastMovieCount = frameKey;
       }
       animationFrame = window.requestAnimationFrame(animate);
     };
@@ -988,7 +1374,7 @@
       state.params = clone(defaults[nextConcept]);
     }
     setControlValues();
-    if (state.concept === "mcmc") {
+    if (traceConfig() || state.concept === "optimizer") {
       startMcmcAnimation();
     } else {
       stopMcmcAnimation();
@@ -1004,6 +1390,6 @@
   window.addEventListener("resize", render);
 
   setControlValues();
-  if (state.concept === "mcmc") startMcmcAnimation();
+  if (traceConfig() || state.concept === "optimizer") startMcmcAnimation();
   else render();
 }());

@@ -263,7 +263,15 @@ main.content h2 {
 }
 
 .roc-dashboard.is-mcmc .roc-svg {
-  aspect-ratio: 1.36 / 1;
+  aspect-ratio: 1.55 / 1;
+}
+
+.roc-dashboard.is-fig27 .roc-svg {
+  aspect-ratio: 2.28 / 1;
+}
+
+.roc-dashboard.is-optimizer .roc-svg {
+  aspect-ratio: 1.57 / 1;
 }
 
 .roc-concept-note {
