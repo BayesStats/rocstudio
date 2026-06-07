@@ -4,26 +4,35 @@
 
   const densitySvg = document.getElementById("roc-density-plot");
   const rocSvg = document.getElementById("roc-roc-plot");
-  const metricChoice = document.getElementById("roc-metric-choice");
+  const conceptChoice = document.getElementById("roc-metric-choice");
   const metricLabel = document.getElementById("roc-metric-label");
   const metricValue = document.getElementById("roc-metric-value");
+  const secondaryMetric = document.getElementById("roc-secondary-metric");
   const metricCaption = document.getElementById("roc-metric-caption");
+  const conceptNote = document.getElementById("roc-concept-note");
 
   const defaults = {
-    blue: { mean: 0, sd: 1 },
-    red: { mean: 2, sd: 1 },
-    metric: "auc"
+    auc: {
+      blueMean: 0,
+      blueSd: 1,
+      redMean: 2,
+      redSd: 1
+    },
+    affinity: {
+      blueLeft: -5,
+      blueRight: 5,
+      blueSd: 0.32,
+      redMean: 0,
+      redSd: 0.5
+    }
   };
+
+  const requestedConcept = new URLSearchParams(window.location.search).get("concept");
+  const initialConcept = requestedConcept === "affinity" ? "affinity" : "auc";
 
   const state = {
-    blue: { ...defaults.blue },
-    red: { ...defaults.red },
-    metric: defaults.metric
-  };
-
-  const dragRanges = {
-    blue: { min: -2.5, max: 2.5 },
-    red: { min: -0.5, max: 4.8 }
+    concept: initialConcept,
+    params: clone(defaults[initialConcept])
   };
 
   const colors = {
@@ -31,18 +40,19 @@
     blueFill: "rgba(37, 99, 235, 0.18)",
     red: "#e14a61",
     redFill: "rgba(225, 74, 97, 0.18)",
+    trapBlue: "#111827",
+    trapBlueFill: "rgba(17, 24, 39, 0.13)",
+    trapRed: "#9aa0a6",
+    trapRedFill: "rgba(154, 160, 166, 0.20)",
     overlap: "rgba(67, 86, 108, 0.16)",
-    ink: "#2d4053",
-    muted: "#536779",
+    roc: "#003366",
     grid: "#e5ebf1"
   };
 
-  const densityView = {
+  const densityBaseView = {
     w: 640,
     h: 340,
-    m: { top: 18, right: 18, bottom: 44, left: 48 },
-    xMin: -4,
-    xMax: 6
+    m: { top: 18, right: 18, bottom: 44, left: 48 }
   };
 
   const rocView = {
@@ -52,6 +62,10 @@
   };
 
   let drag = null;
+
+  function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
@@ -79,18 +93,78 @@
     return Math.exp(-0.5 * z * z) / (sd * Math.sqrt(2 * Math.PI));
   }
 
-  function auc() {
-    const delta = state.red.mean - state.blue.mean;
-    const scale = Math.sqrt(state.red.sd * state.red.sd + state.blue.sd * state.blue.sd);
-    return normalCdf(delta / scale);
+  function blueDensity(x) {
+    const p = state.params;
+    if (state.concept === "affinity") {
+      return 0.5 * normalPdf(x, p.blueLeft, p.blueSd) + 0.5 * normalPdf(x, p.blueRight, p.blueSd);
+    }
+    return normalPdf(x, p.blueMean, p.blueSd);
   }
 
-  function affinity() {
-    const s0 = state.blue.sd;
-    const s1 = state.red.sd;
-    const delta = state.red.mean - state.blue.mean;
-    const spread = s0 * s0 + s1 * s1;
-    return Math.sqrt((2 * s0 * s1) / spread) * Math.exp(-(delta * delta) / (4 * spread));
+  function redDensity(x) {
+    const p = state.params;
+    return normalPdf(x, p.redMean, p.redSd);
+  }
+
+  function blueCdf(x) {
+    const p = state.params;
+    if (state.concept === "affinity") {
+      return 0.5 * normalCdf((x - p.blueLeft) / p.blueSd) + 0.5 * normalCdf((x - p.blueRight) / p.blueSd);
+    }
+    return normalCdf((x - p.blueMean) / p.blueSd);
+  }
+
+  function redCdf(x) {
+    const p = state.params;
+    return normalCdf((x - p.redMean) / p.redSd);
+  }
+
+  function allMeans() {
+    const p = state.params;
+    if (state.concept === "affinity") return [p.blueLeft, p.redMean, p.blueRight];
+    return [p.blueMean, p.redMean];
+  }
+
+  function maxSd() {
+    const p = state.params;
+    if (state.concept === "affinity") return Math.max(p.blueSd, p.redSd);
+    return Math.max(p.blueSd, p.redSd);
+  }
+
+  function densityView() {
+    if (state.concept === "affinity") {
+      return { ...densityBaseView, xMin: -7, xMax: 7, xTicks: [-6, -4, -2, 0, 2, 4, 6] };
+    }
+    return { ...densityBaseView, xMin: -4, xMax: 6, xTicks: [-4, -2, 0, 2, 4, 6] };
+  }
+
+  function integrationBounds() {
+    const means = allMeans();
+    const pad = Math.max(6, 9 * maxSd());
+    return {
+      min: Math.min(...means) - pad,
+      max: Math.max(...means) + pad
+    };
+  }
+
+  function integrate(fn, steps = 1400) {
+    const { min, max } = integrationBounds();
+    const h = (max - min) / steps;
+    let total = 0;
+    for (let i = 0; i <= steps; i += 1) {
+      const x = min + i * h;
+      const weight = i === 0 || i === steps ? 0.5 : 1;
+      total += weight * fn(x);
+    }
+    return total * h;
+  }
+
+  function aucValue() {
+    return clamp(integrate((x) => blueCdf(x) * redDensity(x)), 0, 1);
+  }
+
+  function affinityValue() {
+    return clamp(integrate((x) => Math.sqrt(Math.max(0, blueDensity(x) * redDensity(x)))), 0, 1);
   }
 
   function svgEl(name, attrs = {}) {
@@ -135,8 +209,13 @@
     return value.toFixed(3);
   }
 
+  function formatAxisTick(tick) {
+    if (Math.abs(tick) >= 1) return tick.toFixed(1).replace(/\.0$/, "");
+    return tick.toFixed(1);
+  }
+
   function setControlValues() {
-    metricChoice.value = state.metric;
+    conceptChoice.value = state.concept;
   }
 
   function drawAxes(svg, view, xScale, yScale, xTicks, yTicks, xLabel, yLabel) {
@@ -149,14 +228,14 @@
       const x = xScale(tick);
       axis.appendChild(svgEl("line", { class: "roc-grid-line", x1: x, y1: m.top, x2: x, y2: h - m.bottom }));
       axis.appendChild(svgEl("line", { x1: x, y1: h - m.bottom, x2: x, y2: h - m.bottom + 5 }));
-      axis.appendChild(svgEl("text", { x, y: h - m.bottom + 20, "text-anchor": "middle", text: tick.toFixed(tick % 1 ? 1 : 0) }));
+      axis.appendChild(svgEl("text", { x, y: h - m.bottom + 20, "text-anchor": "middle", text: formatAxisTick(tick) }));
     });
 
     yTicks.forEach((tick) => {
       const y = yScale(tick);
       axis.appendChild(svgEl("line", { class: "roc-grid-line", x1: m.left, y1: y, x2: w - m.right, y2: y }));
       axis.appendChild(svgEl("line", { x1: m.left - 5, y1: y, x2: m.left, y2: y }));
-      axis.appendChild(svgEl("text", { x: m.left - 10, y: y + 4, "text-anchor": "end", text: tick.toFixed(tick < 1 ? 1 : 0) }));
+      axis.appendChild(svgEl("text", { x: m.left - 10, y: y + 4, "text-anchor": "end", text: formatAxisTick(tick) }));
     });
 
     axis.appendChild(svgEl("text", { x: (m.left + w - m.right) / 2, y: h - 8, "text-anchor": "middle", text: xLabel }));
@@ -171,28 +250,100 @@
   }
 
   function dataXFromPointer(event) {
+    const view = densityView();
     const rect = densitySvg.getBoundingClientRect();
-    const px = ((event.clientX - rect.left) / rect.width) * densityView.w;
-    const span = densityView.xMax - densityView.xMin;
-    const plotW = densityView.w - densityView.m.left - densityView.m.right;
-    return densityView.xMin + ((px - densityView.m.left) / plotW) * span;
+    const px = ((event.clientX - rect.left) / rect.width) * view.w;
+    const span = view.xMax - view.xMin;
+    const plotW = view.w - view.m.left - view.m.right;
+    return view.xMin + ((px - view.m.left) / plotW) * span;
   }
 
-  function startDrag(group, event) {
+  function startMeanDrag(target, event) {
     event.preventDefault();
     drag = {
-      group,
+      kind: "mean",
+      target,
       startX: dataXFromPointer(event),
-      startMean: state[group].mean
+      snapshot: clone(state.params)
     };
     densitySvg.setPointerCapture?.(event.pointerId);
   }
 
+  function startSpreadDrag(target, event) {
+    event.preventDefault();
+    drag = {
+      kind: "spread",
+      target,
+      startX: dataXFromPointer(event),
+      snapshot: clone(state.params)
+    };
+    densitySvg.setPointerCapture?.(event.pointerId);
+  }
+
+  function setMeanFromDrag(x) {
+    const p = state.params;
+    const s = drag.snapshot;
+    const dx = x - drag.startX;
+
+    if (state.concept === "auc") {
+      if (drag.target === "blue") p.blueMean = clamp(s.blueMean + dx, -2.5, 2.5);
+      if (drag.target === "red") p.redMean = clamp(s.redMean + dx, -0.5, 4.8);
+      return;
+    }
+
+    if (drag.target === "bluePair") {
+      const shift = clamp(dx, -6.8 - s.blueLeft, 6.8 - s.blueRight);
+      p.blueLeft = s.blueLeft + shift;
+      p.blueRight = s.blueRight + shift;
+      return;
+    }
+
+    if (drag.target === "blueLeft") {
+      p.blueLeft = clamp(s.blueLeft + dx, -6.8, s.blueRight - 0.9);
+      return;
+    }
+
+    if (drag.target === "blueRight") {
+      p.blueRight = clamp(s.blueRight + dx, s.blueLeft + 0.9, 6.8);
+      return;
+    }
+
+    if (drag.target === "red") {
+      p.redMean = clamp(s.redMean + dx, -3, 3);
+    }
+  }
+
+  function setSpreadFromDrag(x) {
+    const p = state.params;
+    const s = drag.snapshot;
+    let anchor;
+
+    if (state.concept === "auc") {
+      if (drag.target === "blue") {
+        p.blueSd = clamp(Math.abs(x - s.blueMean), 0.25, 2.4);
+      }
+      if (drag.target === "red") {
+        p.redSd = clamp(Math.abs(x - s.redMean), 0.25, 2.4);
+      }
+      return;
+    }
+
+    if (drag.target === "blueLeft") anchor = s.blueLeft;
+    if (drag.target === "blueRight") anchor = s.blueRight;
+    if (drag.target === "red") anchor = s.redMean;
+
+    if (drag.target === "red") {
+      p.redSd = clamp(Math.abs(x - anchor), 0.14, 1.8);
+    } else {
+      p.blueSd = clamp(Math.abs(x - anchor), 0.14, 1.4);
+    }
+  }
+
   function onPointerMove(event) {
     if (!drag) return;
-    const range = dragRanges[drag.group];
-    const next = drag.startMean + dataXFromPointer(event) - drag.startX;
-    state[drag.group].mean = clamp(next, range.min, range.max);
+    const x = dataXFromPointer(event);
+    if (drag.kind === "mean") setMeanFromDrag(x);
+    if (drag.kind === "spread") setSpreadFromDrag(x);
     setControlValues();
     render();
   }
@@ -201,19 +352,124 @@
     drag = null;
   }
 
+  function addMeanHandle(svg, x, y, color, target, text, xScale, yScale) {
+    const cx = xScale(x);
+    const cy = yScale(y);
+    const group = svgEl("g", { style: "cursor: move;" });
+    group.appendChild(svgEl("title", { text }));
+    group.addEventListener("pointerdown", (event) => startMeanDrag(target, event));
+    group.appendChild(svgEl("circle", {
+      cx,
+      cy,
+      r: 15,
+      fill: "transparent",
+      "pointer-events": "all"
+    }));
+    group.appendChild(svgEl("circle", {
+      cx,
+      cy,
+      r: 7,
+      fill: color,
+      stroke: "#fff",
+      "stroke-width": 2
+    }));
+    svg.appendChild(group);
+  }
+
+  function addSpreadHandle(svg, x, y, color, target, text, xScale, yScale) {
+    const cx = xScale(x);
+    const cy = yScale(y);
+    const group = svgEl("g", { style: "cursor: ew-resize;" });
+    group.appendChild(svgEl("title", { text }));
+    group.addEventListener("pointerdown", (event) => startSpreadDrag(target, event));
+    group.appendChild(svgEl("circle", {
+      cx,
+      cy,
+      r: 15,
+      fill: "transparent",
+      "pointer-events": "all"
+    }));
+    group.appendChild(svgEl("circle", {
+      cx,
+      cy,
+      r: 6.5,
+      fill: "#fff",
+      stroke: color,
+      "stroke-width": 2.5
+    }));
+    svg.appendChild(group);
+  }
+
+  function curveStyle(group) {
+    if (state.concept === "affinity") {
+      if (group === "blue") return { stroke: colors.trapBlue, fill: colors.trapBlueFill };
+      return { stroke: colors.trapRed, fill: colors.trapRedFill };
+    }
+    if (group === "blue") return { stroke: colors.blue, fill: colors.blueFill };
+    return { stroke: colors.red, fill: colors.redFill };
+  }
+
+  function drawCurve(svg, group, points, xScale, yScale, target) {
+    const style = curveStyle(group);
+    const fill = addTitle(svgEl("path", {
+      d: areaPath(points, xScale, yScale, 0),
+      fill: style.fill,
+      stroke: "none",
+      style: "cursor: move;"
+    }), `Move the ${group} distribution`);
+    fill.addEventListener("pointerdown", (event) => startMeanDrag(target, event));
+    svg.appendChild(fill);
+
+    const line = addTitle(svgEl("path", {
+      d: linePath(points, xScale, yScale),
+      fill: "none",
+      stroke: style.stroke,
+      "stroke-width": 3.2,
+      "stroke-linejoin": "round",
+      "stroke-linecap": "round",
+      style: "cursor: move; pointer-events: stroke;"
+    }), `Move the ${group} distribution`);
+    line.addEventListener("pointerdown", (event) => startMeanDrag(target, event));
+    svg.appendChild(line);
+  }
+
+  function drawAucHandles(xScale, yScale) {
+    const p = state.params;
+    [
+      { group: "blue", mean: p.blueMean, sd: p.blueSd },
+      { group: "red", mean: p.redMean, sd: p.redSd }
+    ].forEach(({ group, mean, sd }) => {
+      const style = curveStyle(group);
+      addMeanHandle(densitySvg, mean, normalPdf(mean, mean, sd), style.stroke, group, `Move ${group} mean`, xScale, yScale);
+      addSpreadHandle(densitySvg, mean - sd, normalPdf(mean - sd, mean, sd), style.stroke, group, `Change ${group} variance`, xScale, yScale);
+      addSpreadHandle(densitySvg, mean + sd, normalPdf(mean + sd, mean, sd), style.stroke, group, `Change ${group} variance`, xScale, yScale);
+    });
+  }
+
+  function drawAffinityHandles(xScale, yScale) {
+    const p = state.params;
+    const blueStyle = curveStyle("blue");
+    const redStyle = curveStyle("red");
+
+    addMeanHandle(densitySvg, p.blueLeft, blueDensity(p.blueLeft), blueStyle.stroke, "blueLeft", "Move left tail", xScale, yScale);
+    addMeanHandle(densitySvg, p.blueRight, blueDensity(p.blueRight), blueStyle.stroke, "blueRight", "Move right tail", xScale, yScale);
+    addMeanHandle(densitySvg, p.redMean, redDensity(p.redMean), redStyle.stroke, "red", "Move central distribution", xScale, yScale);
+
+    addSpreadHandle(densitySvg, p.blueLeft + p.blueSd, blueDensity(p.blueLeft + p.blueSd), blueStyle.stroke, "blueLeft", "Change tail variance", xScale, yScale);
+    addSpreadHandle(densitySvg, p.blueRight - p.blueSd, blueDensity(p.blueRight - p.blueSd), blueStyle.stroke, "blueRight", "Change tail variance", xScale, yScale);
+    addSpreadHandle(densitySvg, p.redMean - p.redSd, redDensity(p.redMean - p.redSd), redStyle.stroke, "red", "Change central variance", xScale, yScale);
+    addSpreadHandle(densitySvg, p.redMean + p.redSd, redDensity(p.redMean + p.redSd), redStyle.stroke, "red", "Change central variance", xScale, yScale);
+  }
+
   function drawDensityPlot() {
-    const view = densityView;
+    const view = densityView();
     const { w, h, m, xMin, xMax } = view;
     clear(densitySvg, view);
 
-    const n = 220;
+    const n = 260;
     const points = Array.from({ length: n }, (_, i) => {
       const x = xMin + (i / (n - 1)) * (xMax - xMin);
-      return {
-        x,
-        blue: normalPdf(x, state.blue.mean, state.blue.sd),
-        red: normalPdf(x, state.red.mean, state.red.sd)
-      };
+      return { x, blue: blueDensity(x), red: redDensity(x) };
     });
     const yMax = Math.max(...points.map((p) => Math.max(p.blue, p.red))) * 1.18;
 
@@ -225,7 +481,7 @@
       view,
       xScale,
       yScale,
-      [-4, -2, 0, 2, 4, 6],
+      view.xTicks,
       [0, yMax / 2, yMax],
       "Diagnostic outcome",
       "Density"
@@ -241,45 +497,11 @@
       stroke: "none"
     }));
 
-    [
-      { group: "blue", points: bluePoints, fill: colors.blueFill, stroke: colors.blue, text: "Drag the blue distribution" },
-      { group: "red", points: redPoints, fill: colors.redFill, stroke: colors.red, text: "Drag the red distribution" }
-    ].forEach((curve) => {
-      const fill = addTitle(svgEl("path", {
-        d: areaPath(curve.points, xScale, yScale, 0),
-        fill: curve.fill,
-        stroke: "none",
-        style: "cursor: ew-resize;"
-      }), curve.text);
-      fill.addEventListener("pointerdown", (event) => startDrag(curve.group, event));
-      densitySvg.appendChild(fill);
+    drawCurve(densitySvg, "blue", bluePoints, xScale, yScale, state.concept === "affinity" ? "bluePair" : "blue");
+    drawCurve(densitySvg, "red", redPoints, xScale, yScale, "red");
 
-      const line = addTitle(svgEl("path", {
-        d: linePath(curve.points, xScale, yScale),
-        fill: "none",
-        stroke: curve.stroke,
-        "stroke-width": 3.2,
-        "stroke-linejoin": "round",
-        "stroke-linecap": "round",
-        style: "cursor: ew-resize; pointer-events: stroke;"
-      }), curve.text);
-      line.addEventListener("pointerdown", (event) => startDrag(curve.group, event));
-      densitySvg.appendChild(line);
-
-      const mean = state[curve.group].mean;
-      const sd = state[curve.group].sd;
-      const handle = addTitle(svgEl("circle", {
-        cx: xScale(mean),
-        cy: yScale(normalPdf(mean, mean, sd)),
-        r: 6.5,
-        fill: curve.stroke,
-        stroke: "#fff",
-        "stroke-width": 2,
-        style: "cursor: ew-resize;"
-      }), curve.text);
-      handle.addEventListener("pointerdown", (event) => startDrag(curve.group, event));
-      densitySvg.appendChild(handle);
-    });
+    if (state.concept === "affinity") drawAffinityHandles(xScale, yScale);
+    else drawAucHandles(xScale, yScale);
   }
 
   function drawRocPlot() {
@@ -301,35 +523,33 @@
       "stroke-width": 1.4
     }));
 
-    const sdMax = Math.max(state.blue.sd, state.red.sd);
-    const tMin = Math.min(state.blue.mean, state.red.mean) - 5 * sdMax;
-    const tMax = Math.max(state.blue.mean, state.red.mean) + 5 * sdMax;
+    const { min, max } = integrationBounds();
     const points = [{ x: 0, y: 0 }];
-    for (let i = 0; i <= 180; i += 1) {
-      const t = tMax - (i / 180) * (tMax - tMin);
-      const fpr = 1 - normalCdf((t - state.blue.mean) / state.blue.sd);
-      const tpr = 1 - normalCdf((t - state.red.mean) / state.red.sd);
+    for (let i = 0; i <= 240; i += 1) {
+      const t = max - (i / 240) * (max - min);
+      const fpr = 1 - blueCdf(t);
+      const tpr = 1 - redCdf(t);
       points.push({ x: clamp(fpr, 0, 1), y: clamp(tpr, 0, 1) });
     }
     points.push({ x: 1, y: 1 });
 
     const area = [
       `M ${xScale(0).toFixed(2)} ${yScale(0).toFixed(2)}`,
-      points.map((p, i) => `${i ? "L" : "L"} ${xScale(p.x).toFixed(2)} ${yScale(p.y).toFixed(2)}`).join(" "),
+      points.map((p) => `L ${xScale(p.x).toFixed(2)} ${yScale(p.y).toFixed(2)}`).join(" "),
       `L ${xScale(1).toFixed(2)} ${yScale(0).toFixed(2)}`,
       "Z"
     ].join(" ");
 
     rocSvg.appendChild(svgEl("path", {
       d: area,
-      fill: state.metric === "auc" ? "rgba(0, 51, 102, 0.16)" : "rgba(83, 103, 121, 0.10)",
+      fill: state.concept === "auc" ? "rgba(0, 51, 102, 0.16)" : "rgba(83, 103, 121, 0.10)",
       stroke: "none"
     }));
 
     rocSvg.appendChild(svgEl("path", {
       d: linePath(points, xScale, yScale),
       fill: "none",
-      stroke: "#003366",
+      stroke: colors.roc,
       "stroke-width": 3.2,
       "stroke-linejoin": "round",
       "stroke-linecap": "round"
@@ -337,14 +557,21 @@
   }
 
   function updateMetric() {
-    if (state.metric === "auc") {
+    const auc = aucValue();
+    const affinity = affinityValue();
+
+    if (state.concept === "auc") {
       metricLabel.textContent = "AUC";
-      metricValue.textContent = formatNumber(auc());
+      metricValue.textContent = formatNumber(auc);
+      secondaryMetric.textContent = "";
       metricCaption.textContent = "Area Under the Curve";
+      conceptNote.textContent = "";
     } else {
       metricLabel.textContent = "affinity";
-      metricValue.textContent = formatNumber(affinity());
+      metricValue.textContent = formatNumber(affinity);
+      secondaryMetric.textContent = `AUC ${formatNumber(auc)}`;
       metricCaption.textContent = "Distributional affinity";
+      conceptNote.textContent = "Separation trap: AUC can be 0.5 with almost no overlap.";
     }
   }
 
@@ -354,13 +581,17 @@
     updateMetric();
   }
 
-  function updateFromControls() {
-    state.metric = metricChoice.value;
+  function updateConcept() {
+    const nextConcept = conceptChoice.value;
+    if (nextConcept !== state.concept) {
+      state.concept = nextConcept;
+      state.params = clone(defaults[nextConcept]);
+    }
     setControlValues();
     render();
   }
 
-  metricChoice.addEventListener("change", updateFromControls);
+  conceptChoice.addEventListener("change", updateConcept);
 
   window.addEventListener("pointermove", onPointerMove);
   window.addEventListener("pointerup", endDrag);
