@@ -32,12 +32,11 @@
       redRight: 5,
       redRightSd: 0.32
     },
-    overlap: {},
-    optimizer: {}
+    overlap: {}
   };
 
   const requestedConcept = new URLSearchParams(window.location.search).get("concept");
-  const conceptNames = new Set(["mcmc", "fig27", "auc", "affinity", "overlap", "optimizer"]);
+  const conceptNames = new Set(["mcmc", "fig27", "auc", "affinity", "overlap"]);
   const initialConcept = conceptNames.has(requestedConcept) ? requestedConcept : "mcmc";
 
   const state = {
